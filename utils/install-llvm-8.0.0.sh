@@ -20,7 +20,9 @@ if [ ! -d "${target_dir}/llvm-project" ]; then
 fi
 echo "Building LLVM..."
 cd ${target_dir}/llvm-project/
-git checkout llvmorg-8.0.0
+# Useless because we replaced it with using submodules and putting things
+# In the right place already
+# git checkout llvmorg-8.0.0
 mkdir -p build
 cd build
 cmake -G "Unix Makefiles" -DLLVM_ENABLE_PROJECTS='clang;clang-tools-extra;libcxx;libcxxabi;libunwind;lld;lldb;compiler-rt;lld;polly;debuginfo-tests;openmp;parallel-libs' -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_CXX1Y=ON -DLLVM_ENABLE_EH=ON -DLLVM_ENABLE_RTTI=ON -DBUILD_SHARED_LIBS=ON -DLLVM_BUILD_LLVM_DYLIB=ON ../llvm
