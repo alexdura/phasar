@@ -8,8 +8,6 @@ set -e
 # sudo pip install pyyaml
 
 echo "Building PhASAR..."
-git submodule init
-git submodule update
 
 export CC=/usr/local/bin/clang
 export CXX=/usr/local/bin/clang++
