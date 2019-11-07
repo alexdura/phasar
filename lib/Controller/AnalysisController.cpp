@@ -34,6 +34,7 @@
 #include <phasar/PhasarLLVM/IfdsIde/Problems/IFDSLinearConstantAnalysis.h>
 #include <phasar/PhasarLLVM/IfdsIde/Problems/IFDSSolverTest.h>
 #include <phasar/PhasarLLVM/IfdsIde/Problems/IFDSTaintAnalysis.h>
+#include <phasar/PhasarLLVM/IfdsIde/Problems/IFDSGObjAnalysis.h>
 #include <phasar/PhasarLLVM/IfdsIde/Problems/IFDSTypeAnalysis.h>
 #include <phasar/PhasarLLVM/IfdsIde/Problems/IFDSUninitializedVariables.h>
 #include <phasar/PhasarLLVM/IfdsIde/Problems/TypeStateDescriptions/CSTDFILEIOTypeStateDescription.h>
@@ -206,6 +207,22 @@ AnalysisController::AnalysisController(
         }
         break;
       }
+      case DataFlowAnalysisType::IFDS_GObjAnalysis: {
+        TaintConfiguration<const llvm::Value *> TSF;
+        IFDSGObjAnalysis TaintAnalysisProblem(ICFG, CH, IRDB, TSF,
+                                              EntryPoints);
+        LLVMIFDSSolver<const llvm::Value *, LLVMBasedICFG &> LLVMTaintSolver(
+            TaintAnalysisProblem, false);
+        cout << "IFDS Taint Analysis ..." << endl;
+        LLVMTaintSolver.solve();
+        cout << "IFDS Taint Analysis ended" << endl;
+        // FinalResultsJson += LLVMTaintSolver.getAsJson();
+        if (PrintEdgeRecorder) {
+          LLVMTaintSolver.exportJson(graph_id);
+        }
+        break;
+      }
+
       case DataFlowAnalysisType::IDE_TaintAnalysis: {
         IDETaintAnalysis taintanalysisproblem(ICFG, CH, IRDB, EntryPoints);
         LLVMIDESolver<const llvm::Value *, const llvm::Value *, LLVMBasedICFG &>
