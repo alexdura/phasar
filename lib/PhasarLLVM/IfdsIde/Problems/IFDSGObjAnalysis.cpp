@@ -355,7 +355,8 @@ void GObjTypeGraph::buildTypeGraph() {
 
         StringRef  calleeName = calledFunc->getName();
 
-        if (calleeName.equals("g_type_register_static_simple")) {
+        if (calleeName.equals("g_type_register_static_simple")
+	    || calleeName.equals("g_type_register_static")) {
           const Value *arg0 = callSite.getArgOperand(0);
           if (const ConstantInt *IC = dyn_cast<ConstantInt>(arg0)) {
             if (IC->getZExtValue() == 80)
@@ -364,7 +365,7 @@ void GObjTypeGraph::buildTypeGraph() {
               dbgs() << "Unknown type id: " << *IC << "\n";
           } else if (const CallInst *C = dyn_cast<CallInst>(arg0)) {
             ImmutableCallSite parentTypeCallSite(C);
-            StringRef parentTypeCalleeName = parentTypeCallSite->getName();
+            StringRef parentTypeCalleeName = parentTypeCallSite.getCalledFunction()->getName();
             if (parentTypeCalleeName.endswith("_get_type")) {
               dbgs() << name << "->" << parentTypeCalleeName << "\n";
             } else {
