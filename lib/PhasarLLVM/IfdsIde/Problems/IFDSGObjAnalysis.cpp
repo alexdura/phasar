@@ -334,14 +334,22 @@ void IFDSGObjAnalysis::printIFDSReport(
   }
 }
 
+// A function that builds the type hierarchy from LLVM IR:
+// That is: a map from the daughter class to its parent class
 void GObjTypeGraph::buildTypeGraph() {
   using namespace llvm;
 
+  // To get the type
+
   for (const Function &F : M.getFunctionList()) {
     StringRef name = F.getName();
+    // Any function that does not finish by _get_type_once or _get_type
+    // is ignored.
     if (!(name.endswith("_get_type_once") || name.endswith("_get_type")))
       continue;
 
+    // We are interested in functions that have names 
+    // <class_name>_get_type_once or <class_name>_get_type
     for (const BasicBlock &B : F) {
       for (const Instruction &I : B) {
         if (!isa<CallInst>(I))
@@ -355,17 +363,27 @@ void GObjTypeGraph::buildTypeGraph() {
 
         StringRef  calleeName = calledFunc->getName();
 
+	// The functions <class_name>_get_type call
+	// automatically some type registration for their parent type,
+	// that is why we are interested in them!
+	// This type registration requires a type ID.
         if (calleeName.equals("g_type_register_static_simple")
 	    || calleeName.equals("g_type_register_static")) {
           const Value *arg0 = callSite.getArgOperand(0);
+	  // Some of these calls only register a type through its ID,
+	  // That is the case when the class inherits GObject.
           if (const ConstantInt *IC = dyn_cast<ConstantInt>(arg0)) {
             if (IC->getZExtValue() == 80)
               dbgs() << name << "->" << "GObject" << "\n";
             else
               dbgs() << "Unknown type id: " << *IC << "\n";
           } else if (const CallInst *C = dyn_cast<CallInst>(arg0)) {
+	    // Here, we are in the case where the type ID was set with
+	    // a function.
             ImmutableCallSite parentTypeCallSite(C);
             StringRef parentTypeCalleeName = parentTypeCallSite.getCalledFunction()->getName();
+	    // If this function also has a name that ends with get_type,
+	    // it means it will return the type of the parent.
             if (parentTypeCalleeName.endswith("_get_type")) {
               dbgs() << name << "->" << parentTypeCalleeName << "\n";
             } else {
