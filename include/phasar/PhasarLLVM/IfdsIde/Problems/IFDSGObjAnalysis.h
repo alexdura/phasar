@@ -32,13 +32,15 @@ class LLVMBasedICFG;
 
 class GObjTypeGraph {
   const llvm::Module &M;
-  std::map<const llvm::Function*, const llvm::Function*> typeFuncMap;
+  std::map<std::string, std::string> typeFuncMap;
 
 public:
   GObjTypeGraph(const llvm::Module &Mod) : M(Mod) {
   }
 
   void buildTypeGraph();
+
+  void dumpTypeMap() const;
 };
 
 /**

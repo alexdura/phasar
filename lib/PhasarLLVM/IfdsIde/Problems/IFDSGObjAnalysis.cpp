@@ -43,6 +43,7 @@ IFDSGObjAnalysis::IFDSGObjAnalysis(
   for (const llvm::Module *M : irdb.getAllModules()) {
     GObjTypeGraph tg(*M);
     tg.buildTypeGraph();
+    tg.dumpTypeMap();
   }
 
   exit(0);
@@ -353,20 +354,26 @@ void GObjTypeGraph::buildTypeGraph() {
           continue;
         }
 
+        name.consume_back("_once");
+        name.consume_back("_get_type");
+        std::string subTypeName = name.str();
+
         StringRef  calleeName = calledFunc->getName();
 
         if (calleeName.equals("g_type_register_static_simple")) {
           const Value *arg0 = callSite.getArgOperand(0);
           if (const ConstantInt *IC = dyn_cast<ConstantInt>(arg0)) {
-            if (IC->getZExtValue() == 80)
-              dbgs() << name << "->" << "GObject" << "\n";
-            else
+            if (IC->getZExtValue() == 80 /* type id of GObject, by convention */) {
+              typeFuncMap[subTypeName] = "GObject";
+            } else {
               dbgs() << "Unknown type id: " << *IC << "\n";
+            }
           } else if (const CallInst *C = dyn_cast<CallInst>(arg0)) {
             ImmutableCallSite parentTypeCallSite(C);
-            StringRef parentTypeCalleeName = parentTypeCallSite->getName();
+            StringRef parentTypeCalleeName = parentTypeCallSite.getCalledFunction()->getName();
             if (parentTypeCalleeName.endswith("_get_type")) {
-              dbgs() << name << "->" << parentTypeCalleeName << "\n";
+              parentTypeCalleeName.consume_back("_get_type");
+              typeFuncMap[subTypeName] = parentTypeCalleeName;
             } else {
               dbgs() << "Unknown type id: " << *C << "\n";
             }
@@ -374,6 +381,12 @@ void GObjTypeGraph::buildTypeGraph() {
         }
       }
     }
+  }
+}
+
+void GObjTypeGraph::dumpTypeMap() const {
+  for (auto &p : typeFuncMap) {
+    llvm::dbgs() << p.first << " -> " << p.second << "\n";
   }
 }
 
