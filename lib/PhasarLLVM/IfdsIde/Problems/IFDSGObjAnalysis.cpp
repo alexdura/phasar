@@ -48,6 +48,10 @@ IFDSGObjAnalysis::getNormalFlowFunction(IFDSGObjAnalysis::n_t curr,
   auto &lg = lg::get();
   LOG_IF_ENABLE(BOOST_LOG_SEV(lg, DEBUG)
                 << "IFDSGObjAnalysis::getNormalFlowFunction()");
+  // TODO:
+  // Track type values through load, store and getelementptr.
+  // Look at all the values in the Type set instead.
+
   // If a tainted value is stored, the store location must be tainted too
   if (auto Store = llvm::dyn_cast<llvm::StoreInst>(curr)) {
     struct TAFF : FlowFunction<IFDSGObjAnalysis::d_t> {
