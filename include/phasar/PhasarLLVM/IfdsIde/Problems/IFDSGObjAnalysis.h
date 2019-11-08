@@ -31,16 +31,49 @@ namespace psr {
 class LLVMBasedICFG;
 
 class GObjTypeGraph {
-  const llvm::Module &M;
-  std::map<std::string, std::string> typeFuncMap;
+  const std::set<llvm::Module *> &Modules;
 
-public:
-  GObjTypeGraph(const llvm::Module &Mod) : M(Mod) {
-  }
+  std::map<std::string, std::string> SuperClassMap;
+  std::map<std::string, llvm::Value*> ZeroValueMap;
+  std::unordered_set<const llvm::Value*> ZeroValues;
+
+  llvm::LLVMContext ZeroValueContext;
+  llvm::Module ZeroValueModule;
 
   void buildTypeGraph();
 
+public:
+  GObjTypeGraph(const std::set<llvm::Module*> &Modules) :
+    Modules(Modules),
+    ZeroValueModule("zero_module_gobj", ZeroValueContext) {
+    buildTypeGraph();
+  }
+
   void dumpTypeMap() const;
+
+  const llvm::Value *getValueForTypeName(const std::string &name);
+
+  bool isTypeValue(const llvm::Value *v) const {
+    return ZeroValues.count(v);
+  }
+
+  static bool isGetTypeFunction(const llvm::Function *F) {
+    return F->getName().endswith("_get_type");
+  }
+
+  static llvm::StringRef extractTypeName(const llvm::Function *F) {
+    llvm::StringRef name = F->getName();
+    name.consume_back("_get_type");
+    return name;
+  }
+
+  static bool isGetTypeCall(const llvm::Instruction *I) {
+    llvm::ImmutableCallSite CallSite(I);
+    if (!CallSite.isCall())
+      return false;
+    return CallSite.getCalledFunction() &&
+      isGetTypeFunction(CallSite.getCalledFunction());
+  }
 };
 
 /**
@@ -64,6 +97,7 @@ public:
 private:
   TaintConfiguration<const llvm::Value *> SourceSinkFunctions;
   std::vector<std::string> EntryPoints;
+  GObjTypeGraph TypeInfo;
 
 public:
   /// Holds all leaks found during the analysis
@@ -114,6 +148,10 @@ public:
 
   void printIFDSReport(std::ostream &os,
                        SolverResults<n_t, d_t, BinaryDomain> &SR) override;
+
+  std::shared_ptr<FlowFunction<IFDSGObjAnalysis::d_t>>
+  provideSpecialSummaries(IFDSGObjAnalysis::n_t callStmt,
+                               IFDSGObjAnalysis::m_t destMthd);
 };
 } // namespace psr
 

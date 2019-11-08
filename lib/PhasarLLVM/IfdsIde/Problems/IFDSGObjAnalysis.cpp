@@ -38,17 +38,7 @@ IFDSGObjAnalysis::IFDSGObjAnalysis(
     i_t icfg, const LLVMTypeHierarchy &th, const ProjectIRDB &irdb,
     TaintConfiguration<IFDSGObjAnalysis::d_t> TSF, vector<string> EntryPoints)
     : LLVMDefaultIFDSTabulationProblem(icfg, th, irdb),
-      SourceSinkFunctions(TSF), EntryPoints(EntryPoints) {
-
-  for (const llvm::Module *M : irdb.getAllModules()) {
-    GObjTypeGraph tg(*M);
-    tg.buildTypeGraph();
-    tg.dumpTypeMap();
-  }
-
-  exit(0);
-
-
+      SourceSinkFunctions(TSF), EntryPoints(EntryPoints), TypeInfo(irdb.getAllModules()) {
   IFDSGObjAnalysis::zerovalue = createZeroValue();
 }
 
@@ -93,6 +83,24 @@ IFDSGObjAnalysis::getNormalFlowFunction(IFDSGObjAnalysis::n_t curr,
           return source == GEP->getPointerOperand();
         });
   }
+
+  if (auto *BC = llvm::dyn_cast<llvm::BitCastInst>(curr)) {
+    struct BitCastTAFF : FlowFunction<d_t> {
+      d_t Src, Dst;
+      BitCastTAFF(d_t Src, d_t Dst) : Src(Src), Dst(Dst) {}
+      std::set<d_t> computeTargets(d_t source) override {
+        if (source == Src) {
+          llvm::dbgs() << ">>> Bitcast of GObject " << *source << "\n";
+          return {Src, Dst};
+        } else if (source == Dst) {
+          return {};
+        } else {
+          return {source};
+        }
+      }
+    };
+    return make_shared<BitCastTAFF>(BC, BC->getOperand(0));
+  }
   // Otherwise we do not care and leave everything as it is
   return Identity<IFDSGObjAnalysis::d_t>::getInstance();
 }
@@ -108,16 +116,21 @@ IFDSGObjAnalysis::getCallFlowFunction(IFDSGObjAnalysis::n_t callStmt,
   // We then can kill all data-flow facts not following the called function.
   // The respective taints or leaks are then generated in the corresponding
   // call to return flow function.
+
+#if 0
   if (SourceSinkFunctions.isSource(FunctionName) ||
       (SourceSinkFunctions.isSink(FunctionName))) {
     return KillAll<IFDSGObjAnalysis::d_t>::getInstance();
   }
+#endif
+
   // Map the actual into the formal parameters
   if (llvm::isa<llvm::CallInst>(callStmt) ||
       llvm::isa<llvm::InvokeInst>(callStmt)) {
     return make_shared<MapFactsToCallee>(llvm::ImmutableCallSite(callStmt),
                                          destMthd);
   }
+
   // Pass everything else as identity
   return Identity<IFDSGObjAnalysis::d_t>::getInstance();
 }
@@ -148,6 +161,7 @@ IFDSGObjAnalysis::getCallToRetFlowFunction(
   auto &lg = lg::get();
   LOG_IF_ENABLE(BOOST_LOG_SEV(lg, DEBUG)
                 << "IFDSGObjAnalysis::getCallToRetFlowFunction()");
+#if 0
   // Process the effects of source or sink functions that are called
   for (auto *Callee : icfg.getCalleesOfCallAt(callSite)) {
     string FunctionName = cxx_demangle(Callee->getName().str());
@@ -234,6 +248,7 @@ IFDSGObjAnalysis::getCallToRetFlowFunction(
                                this);
     }
   }
+#endif
   // Otherwise pass everything as it is
   return Identity<IFDSGObjAnalysis::d_t>::getInstance();
 }
@@ -253,8 +268,37 @@ IFDSGObjAnalysis::getSummaryFlowFunction(IFDSGObjAnalysis::n_t callStmt,
   } else {
     // Otherwise we indicate, that not special summary exists
     // and the solver thus calls the call flow function instead
-    return nullptr;
+    return provideSpecialSummaries(callStmt, destMthd);
   }
+}
+
+shared_ptr<FlowFunction<IFDSGObjAnalysis::d_t>>
+IFDSGObjAnalysis::provideSpecialSummaries(IFDSGObjAnalysis::n_t callStmt,
+                                               IFDSGObjAnalysis::m_t destMthd) {
+  llvm::StringRef FunctionName = cxx_demangle(destMthd->getName().str());
+
+  SpecialSummaries<IFDSGObjAnalysis::d_t> &specialSummaries =
+      SpecialSummaries<IFDSGObjAnalysis::d_t>::getInstance();
+
+  if (FunctionName.startswith("g_object_new")) {
+    // for g_object_new, transfer the type from the first argument
+    // to the return
+    llvm::ImmutableCallSite Call(callStmt);
+    struct NewObjTAFF : FlowFunction<IFDSGObjAnalysis::d_t> {
+      const llvm::Value *Arg0, *Ret;
+      NewObjTAFF(const llvm::Value *arg0, const llvm::Value *ret) :
+        Arg0(arg0), Ret(ret) {}
+      set<IFDSGObjAnalysis::d_t>
+      computeTargets(IFDSGObjAnalysis::d_t source) override {
+        if (source == Arg0)
+          return {Ret};
+        return {};
+      }
+    };
+    return make_shared<NewObjTAFF>(Call.getArgument(0), callStmt);
+  }
+
+  return nullptr;
 }
 
 map<IFDSGObjAnalysis::n_t, set<IFDSGObjAnalysis::d_t>>
@@ -265,20 +309,22 @@ IFDSGObjAnalysis::initialSeeds() {
   // If main function is the entry point, commandline arguments have to be
   // tainted. Otherwise we just use the zero value to initialize the analysis.
   map<IFDSGObjAnalysis::n_t, set<IFDSGObjAnalysis::d_t>> SeedMap;
-  for (auto &EntryPoint : EntryPoints) {
-    if (EntryPoint == "main") {
-      set<IFDSGObjAnalysis::d_t> CmdArgs;
-      for (auto &Arg : icfg.getMethod(EntryPoint)->args()) {
-        CmdArgs.insert(&Arg);
+
+  for (const llvm::Module *M : irdb.getAllModules()) {
+    for (const llvm::Function &F : M->getFunctionList()) {
+      for (const llvm::BasicBlock &B : F) {
+        for (const llvm::Instruction &I : B) {
+          if (GObjTypeGraph::isGetTypeCall(&I)) {
+            llvm::ImmutableCallSite CallSite(&I);
+            llvm::StringRef typeName = GObjTypeGraph::extractTypeName(&F);
+            const llvm::Value *typeValue = TypeInfo.getValueForTypeName(typeName);
+            SeedMap.insert(make_pair(&I, set<IFDSGObjAnalysis::d_t>({typeValue})));
+          }
+        }
       }
-      CmdArgs.insert(zeroValue());
-      SeedMap.insert(
-          make_pair(&icfg.getMethod(EntryPoint)->front().front(), CmdArgs));
-    } else {
-      SeedMap.insert(make_pair(&icfg.getMethod(EntryPoint)->front().front(),
-                               set<IFDSGObjAnalysis::d_t>({zeroValue()})));
     }
   }
+
   return SeedMap;
 }
 
@@ -341,60 +387,61 @@ void GObjTypeGraph::buildTypeGraph() {
   using namespace llvm;
 
   // To get the type
+  for (const Module *M : Modules) {
+    for (const Function &F : M->getFunctionList()) {
+      StringRef name = F.getName();
+      // Any function that does not finish by _get_type_once or _get_type
+      // is ignored.
+      if (!(name.endswith("_get_type_once") || name.endswith("_get_type")))
+        continue;
 
-  for (const Function &F : M.getFunctionList()) {
-    StringRef name = F.getName();
-    // Any function that does not finish by _get_type_once or _get_type
-    // is ignored.
-    if (!(name.endswith("_get_type_once") || name.endswith("_get_type")))
-      continue;
+      // We are interested in functions that have names
+      // <class_name>_get_type_once or <class_name>_get_type
+      for (const BasicBlock &B : F) {
+        for (const Instruction &I : B) {
+          if (!isa<CallInst>(I))
+            continue;
+          ImmutableCallSite callSite(&I);
 
-    // We are interested in functions that have names
-    // <class_name>_get_type_once or <class_name>_get_type
-    for (const BasicBlock &B : F) {
-      for (const Instruction &I : B) {
-        if (!isa<CallInst>(I))
-          continue;
-        ImmutableCallSite callSite(&I);
+          const Function *calledFunc = callSite.getCalledFunction();
+          if (!calledFunc) {
+            continue;
+          }
 
-        const Function *calledFunc = callSite.getCalledFunction();
-        if (!calledFunc) {
-          continue;
-        }
+          name.consume_back("_once");
+          name.consume_back("_get_type");
+          std::string subTypeName = name.str();
 
-        name.consume_back("_once");
-        name.consume_back("_get_type");
-        std::string subTypeName = name.str();
+          StringRef  calleeName = calledFunc->getName();
 
-        StringRef  calleeName = calledFunc->getName();
-
-        // The functions <class_name>_get_type call
-        // automatically some type registration for their parent type,
-        // that is why we are interested in them!
-        // This type registration requires a type ID.
-        if (calleeName.equals("g_type_register_static_simple")
-            || calleeName.equals("g_type_register_static")) {
-          const Value *arg0 = callSite.getArgOperand(0);
-          // Some of these calls only register a type through its ID,
-          // That is the case when the class inherits GObject.
-          if (const ConstantInt *IC = dyn_cast<ConstantInt>(arg0)) {
-            if (IC->getZExtValue() == 80 /* type id of GObject, by convention */) {
-              typeFuncMap[subTypeName] = "GObject";
-            } else {
-              dbgs() << "Unknown type id: " << *IC << "\n";
-            }
-          } else if (const CallInst *C = dyn_cast<CallInst>(arg0)) {
-            // Here, we are in the case where the type ID was set with
-            // a function.
-            ImmutableCallSite parentTypeCallSite(C);
-            StringRef parentTypeCalleeName = parentTypeCallSite.getCalledFunction()->getName();
-            // If this function also has a name that ends with get_type,
-            // it means it will return the type of the parent.
-            if (parentTypeCalleeName.endswith("_get_type")) {
-              parentTypeCalleeName.consume_back("_get_type");
-              typeFuncMap[subTypeName] = parentTypeCalleeName;
-            } else {
-              dbgs() << "Unknown type id: " << *C << "\n";
+          // The functions <class_name>_get_type call
+          // automatically some type registration for their parent type,
+          // that is why we are interested in them!
+          // This type registration requires a type ID.
+          if (calleeName.equals("g_type_register_static_simple")
+              || calleeName.equals("g_type_register_static")) {
+            const Value *arg0 = callSite.getArgOperand(0);
+            // Some of these calls only register a type through its ID,
+            // That is the case when the class inherits GObject.
+            if (const ConstantInt *IC = dyn_cast<ConstantInt>(arg0)) {
+              if (IC->getZExtValue() == 80 /* type id of GObject, by convention */) {
+                SuperClassMap[subTypeName] = "GObject";
+              } else {
+                dbgs() << "Unknown type id: " << *IC << "\n";
+              }
+            } else if (const CallInst *C = dyn_cast<CallInst>(arg0)) {
+              // Here, we are in the case where the type ID was set with
+              // a function.
+              ImmutableCallSite parentTypeCallSite(C);
+              StringRef parentTypeCalleeName = parentTypeCallSite.getCalledFunction()->getName();
+              // If this function also has a name that ends with get_type,
+              // it means it will return the type of the parent.
+              if (isGetTypeFunction(parentTypeCallSite.getCalledFunction())) {
+                parentTypeCalleeName.consume_back("_get_type");
+                SuperClassMap[subTypeName] = extractTypeName(parentTypeCallSite.getCalledFunction());
+              } else {
+                dbgs() << "Unknown type id: " << *C << "\n";
+              }
             }
           }
         }
@@ -404,9 +451,22 @@ void GObjTypeGraph::buildTypeGraph() {
 }
 
 void GObjTypeGraph::dumpTypeMap() const {
-  for (auto &p : typeFuncMap) {
+  for (auto &p : SuperClassMap) {
     llvm::dbgs() << p.first << " -> " << p.second << "\n";
   }
+}
+
+const llvm::Value *GObjTypeGraph::getValueForTypeName(const std::string &name) {
+  // lazily create a zero value an return it
+  auto it = ZeroValueMap.find(name);
+  if (it != ZeroValueMap.end())
+    return it->second;
+  auto zv = ZeroValueModule.getOrInsertGlobal(name,
+                                              llvm::Type::getIntNTy(ZeroValueContext, 2));
+
+  ZeroValueMap[name] = zv;
+  ZeroValues.insert(zv);
+  return zv;
 }
 
 } // namespace psr
