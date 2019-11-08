@@ -33,7 +33,6 @@ using namespace std;
 using namespace psr;
 
 namespace psr {
-
 IFDSGObjAnalysis::IFDSGObjAnalysis(
     i_t icfg, const LLVMTypeHierarchy &th, const ProjectIRDB &irdb,
     TaintConfiguration<IFDSGObjAnalysis::d_t> TSF, vector<string> EntryPoints)
@@ -54,16 +53,21 @@ IFDSGObjAnalysis::getNormalFlowFunction(IFDSGObjAnalysis::n_t curr,
 
   // If a tainted value is stored, the store location must be tainted too
   if (auto Store = llvm::dyn_cast<llvm::StoreInst>(curr)) {
+    // TAFF probably stands for "Taint Analysis Flow Function"
     struct TAFF : FlowFunction<IFDSGObjAnalysis::d_t> {
       const llvm::StoreInst *store;
       TAFF(const llvm::StoreInst *s) : store(s){};
       set<IFDSGObjAnalysis::d_t>
       computeTargets(IFDSGObjAnalysis::d_t source) override {
+	// If the variable we are looking at the
+	// variable to be stored
         if (store->getValueOperand() == source) {
+	  // The source flows into the target pointer.
           return set<IFDSGObjAnalysis::d_t>{store->getPointerOperand(),
                                              source};
         } else if (store->getValueOperand() != source &&
                    store->getPointerOperand() == source) {
+	  // If we are erasing the value, we cut
           return {};
         } else {
           return {source};
@@ -460,6 +464,8 @@ void GObjTypeGraph::dumpTypeMap() const {
   }
 }
 
+// Returns an LLVM value or the provided type name.
+// (Probably the last call to <type>_get_type()
 const llvm::Value *GObjTypeGraph::getValueForTypeName(const std::string &name) {
   // lazily create a zero value an return it
   auto it = ZeroValueMap.find(name);

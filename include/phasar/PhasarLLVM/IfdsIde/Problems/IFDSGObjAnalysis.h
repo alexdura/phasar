@@ -33,7 +33,14 @@ class LLVMBasedICFG;
 class GObjTypeGraph {
   const std::set<llvm::Module *> &Modules;
 
+  // A map mapping subclasses to their superclass.
   std::map<std::string, std::string> SuperClassMap;
+  // we map type names to LLVM values
+  // The Phasar framework also uses LLVM values
+  // for it's "zero" values in the analysis
+  // because this is less expensive
+  // than having a type for LLVM values
+  // and more abstract information (in our case, types).
   std::map<std::string, llvm::Value*> ZeroValueMap;
   std::unordered_set<const llvm::Value*> ZeroValues;
 
@@ -81,6 +88,9 @@ public:
  * dedicated source functions, which generate tainted values, into
  * dedicated sink functions. A leak is reported once a tainted value
  * reached a sink function.
+ * (In this case, source functions are "_get_type()" GObject functions
+ * and our sinks are casts from one type to another, the taint
+ * for our values is their type)
  *
  * @see TaintConfiguration on how to specify your own
  * taint-sensitive source and sink functions.
@@ -101,6 +111,7 @@ private:
 
 public:
   /// Holds all leaks found during the analysis
+  // TODO: Is this really needed?
   std::map<n_t, std::set<d_t>> Leaks;
 
   /**
