@@ -64,6 +64,10 @@ public:
     return ZeroValues.count(v);
   }
 
+  const std::unordered_set<const llvm::Value*>& getZeroValues() const {
+    return ZeroValues;
+  }
+
   static bool isGetTypeFunction(const llvm::Function *F) {
     return F->getName().endswith("_get_type");
   }

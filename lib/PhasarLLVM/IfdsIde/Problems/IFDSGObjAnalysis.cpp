@@ -38,7 +38,7 @@ IFDSGObjAnalysis::IFDSGObjAnalysis(
     TaintConfiguration<IFDSGObjAnalysis::d_t> TSF, vector<string> EntryPoints)
     : LLVMDefaultIFDSTabulationProblem(icfg, th, irdb),
       SourceSinkFunctions(TSF), EntryPoints(EntryPoints), TypeInfo(irdb.getAllModules()) {
-  IFDSGObjAnalysis::zerovalue = createZeroValue();
+  IFDSGObjAnalysis::zerovalue = nullptr;
 }
 
 shared_ptr<FlowFunction<IFDSGObjAnalysis::d_t>>
@@ -135,8 +135,11 @@ IFDSGObjAnalysis::getCallFlowFunction(IFDSGObjAnalysis::n_t callStmt,
   // Map the actual into the formal parameters
   if (llvm::isa<llvm::CallInst>(callStmt) ||
       llvm::isa<llvm::InvokeInst>(callStmt)) {
-    return make_shared<MapFactsToCallee>(llvm::ImmutableCallSite(callStmt),
-                                         destMthd);
+    return make_shared<MapFactsToCallee>(
+      llvm::ImmutableCallSite(callStmt),
+      destMthd,
+      [](const llvm::Value*) {return true;},
+      [this](const llvm::Value* v) {return TypeInfo.isTypeValue(v); });
   }
 
   // Pass everything else as identity
@@ -164,7 +167,7 @@ IFDSGObjAnalysis::getRetFlowFunction(IFDSGObjAnalysis::n_t callSite,
 
 shared_ptr<FlowFunction<IFDSGObjAnalysis::d_t>>
 IFDSGObjAnalysis::getCallToRetFlowFunction(
-    IFDSGObjAnalysis::n_t callSite, IFDSGObjAnalysis::n_t retSite,
+  IFDSGObjAnalysis::n_t callSite, IFDSGObjAnalysis::n_t retSite,
     set<IFDSGObjAnalysis::m_t> callees) {
   auto &lg = lg::get();
   LOG_IF_ENABLE(BOOST_LOG_SEV(lg, DEBUG)
@@ -288,22 +291,50 @@ IFDSGObjAnalysis::provideSpecialSummaries(IFDSGObjAnalysis::n_t callStmt,
   SpecialSummaries<IFDSGObjAnalysis::d_t> &specialSummaries =
       SpecialSummaries<IFDSGObjAnalysis::d_t>::getInstance();
 
+  llvm::ImmutableCallSite Call(callStmt);
   if (FunctionName.startswith("g_object_new")) {
     // for g_object_new, transfer the type from the first argument
     // to the return
-    llvm::ImmutableCallSite Call(callStmt);
     struct NewObjTAFF : FlowFunction<IFDSGObjAnalysis::d_t> {
       const llvm::Value *Arg0, *Ret;
-      NewObjTAFF(const llvm::Value *arg0, const llvm::Value *ret) :
-        Arg0(arg0), Ret(ret) {}
+      const GObjTypeGraph &TI;
+      NewObjTAFF(const llvm::Value *arg0, const llvm::Value *ret, const GObjTypeGraph &TI) :
+        Arg0(arg0), Ret(ret), TI(TI) {}
       set<IFDSGObjAnalysis::d_t>
       computeTargets(IFDSGObjAnalysis::d_t source) override {
-        if (source == Arg0)
-          return {Ret};
-        return {};
+        if (source  == Arg0) {
+          return {source, Arg0};
+        } else if (source == Ret) {
+          return {};
+        } else {
+          return {source};
+        }
       }
     };
-    return make_shared<NewObjTAFF>(Call.getArgument(0), callStmt);
+    return make_shared<NewObjTAFF>(Call.getArgument(0), callStmt, TypeInfo);
+  } else if (Call.getCalledFunction() &&
+             GObjTypeGraph::isGetTypeFunction(Call.getCalledFunction())) {
+    auto typeValue = TypeInfo.getValueForTypeName(
+      GObjTypeGraph::extractTypeName(Call.getCalledFunction()));
+
+    struct GetTypeTF : FlowFunction<IFDSGObjAnalysis::d_t> {
+      const llvm::Value *TypeValue;
+      const llvm::Value *Ret;
+
+      GetTypeTF(d_t TypeValue, d_t Ret) : TypeValue(TypeValue), Ret(Ret) {
+      }
+
+      set<d_t> computeTargets(d_t source) override {
+        if (source == TypeValue) {
+          return {Ret, TypeValue};
+        } else if (source == Ret) {
+          return {};
+        } else {
+          return {source};
+        }
+      }
+    };
+    return make_shared<GetTypeTF>(typeValue, callStmt);
   }
 
   return nullptr;
@@ -324,13 +355,20 @@ IFDSGObjAnalysis::initialSeeds() {
         for (const llvm::Instruction &I : B) {
           if (GObjTypeGraph::isGetTypeCall(&I)) {
             llvm::ImmutableCallSite CallSite(&I);
-            llvm::StringRef typeName = GObjTypeGraph::extractTypeName(&F);
-            const llvm::Value *typeValue = TypeInfo.getValueForTypeName(typeName);
-            SeedMap.insert(make_pair(&I, set<IFDSGObjAnalysis::d_t>({typeValue})));
+            llvm::StringRef typeName = GObjTypeGraph::extractTypeName(CallSite.getCalledFunction());
+            // the TypeName->Value map is lazily initialized, so for the call to getZeroValues() below
+            // to work, we need to initialize it here.
+            TypeInfo.getValueForTypeName(typeName);
           }
         }
       }
     }
+  }
+
+  for (auto &EntryPoint : EntryPoints) {
+    SeedMap.insert(std::make_pair(&icfg.getMethod(EntryPoint)->front().front(),
+                                  set<const llvm::Value *>(TypeInfo.getZeroValues().begin(),
+                                                           TypeInfo.getZeroValues().end())));
   }
 
   return SeedMap;
@@ -345,8 +383,10 @@ IFDSGObjAnalysis::d_t IFDSGObjAnalysis::createZeroValue() {
 }
 
 bool IFDSGObjAnalysis::isZeroValue(IFDSGObjAnalysis::d_t d) const {
+  assert (0 && "This should not be called.");
   return LLVMZeroValue::getInstance()->isLLVMZeroValue(d);
 }
+
 
 void IFDSGObjAnalysis::printNode(ostream &os, IFDSGObjAnalysis::n_t n) const {
   os << llvmIRToString(n);
@@ -472,7 +512,7 @@ const llvm::Value *GObjTypeGraph::getValueForTypeName(const std::string &name) {
   if (it != ZeroValueMap.end())
     return it->second;
   auto zv = ZeroValueModule.getOrInsertGlobal(name,
-                                              llvm::Type::getIntNTy(ZeroValueContext, 2));
+                                              llvm::Type::getInt64Ty(ZeroValueContext));
 
   ZeroValueMap[name] = zv;
   ZeroValues.insert(zv);
