@@ -39,6 +39,8 @@ IFDSGObjAnalysis::IFDSGObjAnalysis(
     : LLVMDefaultIFDSTabulationProblem(icfg, th, irdb),
       SourceSinkFunctions(TSF), EntryPoints(EntryPoints), TypeInfo(irdb.getAllModules()) {
   IFDSGObjAnalysis::zerovalue = createZeroValue();
+  llvm::outs() << "----- Type map ----\n";
+  TypeInfo.dumpTypeMap();
 }
 
 shared_ptr<FlowFunction<IFDSGObjAnalysis::d_t>>
