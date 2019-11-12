@@ -22,9 +22,11 @@ using namespace psr;
 namespace psr {
 
 MapFactsToCallee::MapFactsToCallee(
-    const llvm::ImmutableCallSite &callSite, const llvm::Function *destMthd,
-    function<bool(const llvm::Value *)> predicate)
-    : destMthd(destMthd), predicate(predicate) {
+    const llvm::ImmutableCallSite &callSite,
+    const llvm::Function *destMthd,
+    function<bool(const llvm::Value *)> predicate,
+    function<bool(const llvm::Value *)> zeroValuePredicate)
+  : destMthd(destMthd), predicate(predicate), zeroValuePredicate(zeroValuePredicate) {
   // Set up the actual parameters
   for (unsigned idx = 0; idx < callSite.getNumArgOperands(); ++idx) {
     actuals.push_back(callSite.getArgOperand(idx));
@@ -37,7 +39,7 @@ MapFactsToCallee::MapFactsToCallee(
 
 set<const llvm::Value *>
 MapFactsToCallee::computeTargets(const llvm::Value *source) {
-  if (!LLVMZeroValue::getInstance()->isLLVMZeroValue(source)) {
+  if (!zeroValuePredicate(source)) {
     set<const llvm::Value *> res;
     // Handle C-style varargs functions
     if (destMthd->isVarArg()) {

@@ -14,6 +14,7 @@
 #include <vector>
 
 #include <phasar/PhasarLLVM/IfdsIde/FlowFunction.h>
+#include <phasar/PhasarLLVM/IfdsIde/LLVMZeroValue.h>
 
 namespace llvm {
 class Value;
@@ -34,12 +35,16 @@ protected:
   std::vector<const llvm::Value *> actuals;
   std::vector<const llvm::Value *> formals;
   std::function<bool(const llvm::Value *)> predicate;
+  std::function<bool(const llvm::Value *)> zeroValuePredicate;
 
 public:
   MapFactsToCallee(
       const llvm::ImmutableCallSite &callSite, const llvm::Function *destMthd,
       std::function<bool(const llvm::Value *)> predicate =
-          [](const llvm::Value *) { return true; });
+      [](const llvm::Value *) { return true; },
+      std::function<bool(const llvm::Value *)> zeroValuePredicate =
+      [](const llvm::Value *v) { return LLVMZeroValue::getInstance()->isLLVMZeroValue(v); }
+    );
   virtual ~MapFactsToCallee() = default;
 
   std::set<const llvm::Value *>
