@@ -38,7 +38,7 @@ IFDSGObjAnalysis::IFDSGObjAnalysis(
     TaintConfiguration<IFDSGObjAnalysis::d_t> TSF, vector<string> EntryPoints)
     : LLVMDefaultIFDSTabulationProblem(icfg, th, irdb),
       SourceSinkFunctions(TSF), EntryPoints(EntryPoints), TypeInfo(irdb.getAllModules()) {
-  IFDSGObjAnalysis::zerovalue = nullptr;
+  IFDSGObjAnalysis::zerovalue = createZeroValue();
 }
 
 shared_ptr<FlowFunction<IFDSGObjAnalysis::d_t>>
@@ -64,7 +64,7 @@ IFDSGObjAnalysis::getNormalFlowFunction(IFDSGObjAnalysis::n_t curr,
         if (store->getValueOperand() == source) {
 	  // The source flows into the target pointer.
           return set<IFDSGObjAnalysis::d_t>{store->getPointerOperand(),
-                                             source};
+                                            source};
         } else if (store->getValueOperand() != source &&
                    store->getPointerOperand() == source) {
 	  // If we are erasing the value, we cut
@@ -79,7 +79,7 @@ IFDSGObjAnalysis::getNormalFlowFunction(IFDSGObjAnalysis::n_t curr,
   // If a tainted value is loaded, the loaded value is of course tainted
   if (auto Load = llvm::dyn_cast<llvm::LoadInst>(curr)) {
     return make_shared<GenIf<IFDSGObjAnalysis::d_t>>(
-        Load, zeroValue(), [Load](IFDSGObjAnalysis::d_t source) {
+        Load, nullptr, [Load](IFDSGObjAnalysis::d_t source) {
           return source == Load->getPointerOperand();
         });
   }
@@ -87,7 +87,7 @@ IFDSGObjAnalysis::getNormalFlowFunction(IFDSGObjAnalysis::n_t curr,
   // aggregated object
   if (auto GEP = llvm::dyn_cast<llvm::GetElementPtrInst>(curr)) {
     return make_shared<GenIf<IFDSGObjAnalysis::d_t>>(
-        GEP, zeroValue(), [GEP](IFDSGObjAnalysis::d_t source) {
+        GEP, nullptr, [GEP](IFDSGObjAnalysis::d_t source) {
           return source == GEP->getPointerOperand();
         });
   }
@@ -98,7 +98,7 @@ IFDSGObjAnalysis::getNormalFlowFunction(IFDSGObjAnalysis::n_t curr,
       BitCastTAFF(d_t Src, d_t Dst) : Src(Src), Dst(Dst) {}
       std::set<d_t> computeTargets(d_t source) override {
         if (source == Src) {
-          llvm::dbgs() << ">>> Bitcast of GObject " << *source << "\n";
+          llvm::dbgs() << ">>> Bitcast of GObject " << *source << " at " << *Dst << "\n";
           return {Src, Dst};
         } else if (source == Dst) {
           return {};
@@ -107,7 +107,7 @@ IFDSGObjAnalysis::getNormalFlowFunction(IFDSGObjAnalysis::n_t curr,
         }
       }
     };
-    return make_shared<BitCastTAFF>(BC, BC->getOperand(0));
+    return make_shared<BitCastTAFF>(BC->getOperand(0), BC);
   }
   // Otherwise we do not care and leave everything as it is
   return Identity<IFDSGObjAnalysis::d_t>::getInstance();
@@ -138,8 +138,8 @@ IFDSGObjAnalysis::getCallFlowFunction(IFDSGObjAnalysis::n_t callStmt,
     return make_shared<MapFactsToCallee>(
       llvm::ImmutableCallSite(callStmt),
       destMthd,
-      [](const llvm::Value*) {return true;},
-      [this](const llvm::Value* v) {return TypeInfo.isTypeValue(v); });
+      PredTrue,
+      PredZeroVal);
   }
 
   // Pass everything else as identity
@@ -161,7 +161,7 @@ IFDSGObjAnalysis::getRetFlowFunction(IFDSGObjAnalysis::n_t callSite,
       llvm::ImmutableCallSite(callSite), calleeMthd, exitStmt,
       [](IFDSGObjAnalysis::d_t formal) {
         return formal->getType()->isPointerTy();
-      });
+      }, PredTrue, PredZeroVal);
   // All other stuff is killed at this point
 }
 
@@ -303,7 +303,7 @@ IFDSGObjAnalysis::provideSpecialSummaries(IFDSGObjAnalysis::n_t callStmt,
       set<IFDSGObjAnalysis::d_t>
       computeTargets(IFDSGObjAnalysis::d_t source) override {
         if (source  == Arg0) {
-          return {source, Arg0};
+          return {Ret, Arg0};
         } else if (source == Ret) {
           return {};
         } else {
@@ -366,9 +366,11 @@ IFDSGObjAnalysis::initialSeeds() {
   }
 
   for (auto &EntryPoint : EntryPoints) {
+    set<const llvm::Value*> initialValues(TypeInfo.getTypeValues().begin(),
+                                          TypeInfo.getTypeValues().end());
+    initialValues.insert(zerovalue);
     SeedMap.insert(std::make_pair(&icfg.getMethod(EntryPoint)->front().front(),
-                                  set<const llvm::Value *>(TypeInfo.getZeroValues().begin(),
-                                                           TypeInfo.getZeroValues().end())));
+                                  std::move(initialValues)));
   }
 
   return SeedMap;
@@ -383,7 +385,6 @@ IFDSGObjAnalysis::d_t IFDSGObjAnalysis::createZeroValue() {
 }
 
 bool IFDSGObjAnalysis::isZeroValue(IFDSGObjAnalysis::d_t d) const {
-  assert (0 && "This should not be called.");
   return LLVMZeroValue::getInstance()->isLLVMZeroValue(d);
 }
 
@@ -508,14 +509,14 @@ void GObjTypeGraph::dumpTypeMap() const {
 // (Probably the last call to <type>_get_type()
 const llvm::Value *GObjTypeGraph::getValueForTypeName(const std::string &name) {
   // lazily create a zero value an return it
-  auto it = ZeroValueMap.find(name);
-  if (it != ZeroValueMap.end())
+  auto it = TypeValueMap.find(name);
+  if (it != TypeValueMap.end())
     return it->second;
-  auto zv = ZeroValueModule.getOrInsertGlobal(name,
-                                              llvm::Type::getInt64Ty(ZeroValueContext));
+  auto zv = TypeValueModule.getOrInsertGlobal(name,
+                                              llvm::Type::getInt64Ty(TypeValueContext));
 
-  ZeroValueMap[name] = zv;
-  ZeroValues.insert(zv);
+  TypeValueMap[name] = zv;
+  TypeValues.insert(zv);
   return zv;
 }
 
