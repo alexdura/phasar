@@ -16,6 +16,7 @@
 #include <llvm/IR/CallSite.h> // llvm::ImmutableCallSite
 
 #include <phasar/PhasarLLVM/IfdsIde/FlowFunction.h>
+#include <phasar/PhasarLLVM/IfdsIde/LLVMZeroValue.h>
 
 namespace llvm {
 class Function;
@@ -42,6 +43,7 @@ private:
   std::vector<const llvm::Value *> formals;
   std::function<bool(const llvm::Value *)> paramPredicate;
   std::function<bool(const llvm::Function *)> returnPredicate;
+  std::function<bool(const llvm::Value *)> zeroValuePredicate;
 
 public:
   MapFactsToCaller(
@@ -50,7 +52,10 @@ public:
       std::function<bool(const llvm::Value *)> paramPredicate =
           [](const llvm::Value *) { return true; },
       std::function<bool(const llvm::Function *)> returnPredicate =
-          [](const llvm::Function *) { return true; });
+          [](const llvm::Function *) { return true; },
+      std::function<bool(const llvm::Value *)> zeroValuePredicate =
+          [](const llvm::Value *v) {return LLVMZeroValue::getInstance()->isLLVMZeroValue(v);}
+    );
   virtual ~MapFactsToCaller() = default;
 
   std::set<const llvm::Value *> computeTargets(const llvm::Value *source);

@@ -26,10 +26,11 @@ MapFactsToCaller::MapFactsToCaller(
     llvm::ImmutableCallSite cs, const llvm::Function *calleeMthd,
     const llvm::Instruction *exitstmt,
     function<bool(const llvm::Value *)> paramPredicate,
-    function<bool(const llvm::Function *)> returnPredicate)
+    function<bool(const llvm::Function *)> returnPredicate,
+    function<bool(const llvm::Value *)> zeroValuePredicate)
     : callSite(cs), calleeMthd(calleeMthd),
       exitStmt(llvm::dyn_cast<llvm::ReturnInst>(exitstmt)),
-      paramPredicate(paramPredicate), returnPredicate(returnPredicate) {
+      paramPredicate(paramPredicate), returnPredicate(returnPredicate), zeroValuePredicate(zeroValuePredicate) {
   // Set up the actual parameters
   for (unsigned idx = 0; idx < callSite.getNumArgOperands(); ++idx) {
     actuals.push_back(callSite.getArgOperand(idx));
@@ -42,7 +43,7 @@ MapFactsToCaller::MapFactsToCaller(
 
 set<const llvm::Value *>
 MapFactsToCaller::computeTargets(const llvm::Value *source) {
-  if (!LLVMZeroValue::getInstance()->isLLVMZeroValue(source)) {
+  if (!zeroValuePredicate(source)) {
     set<const llvm::Value *> res;
     // Handle C-style varargs functions
     if (calleeMthd->isVarArg() && !calleeMthd->isDeclaration()) {
