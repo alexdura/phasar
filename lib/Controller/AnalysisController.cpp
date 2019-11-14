@@ -35,6 +35,7 @@
 #include <phasar/PhasarLLVM/IfdsIde/Problems/IFDSSolverTest.h>
 #include <phasar/PhasarLLVM/IfdsIde/Problems/IFDSTaintAnalysis.h>
 #include <phasar/PhasarLLVM/IfdsIde/Problems/IFDSGObjAnalysis.h>
+#include <phasar/PhasarLLVM/IfdsIde/Problems/GObjAnalysis.h>
 #include <phasar/PhasarLLVM/IfdsIde/Problems/IFDSTypeAnalysis.h>
 #include <phasar/PhasarLLVM/IfdsIde/Problems/IFDSUninitializedVariables.h>
 #include <phasar/PhasarLLVM/IfdsIde/Problems/TypeStateDescriptions/CSTDFILEIOTypeStateDescription.h>
@@ -216,6 +217,22 @@ AnalysisController::AnalysisController(
         cout << "IFDS Taint Analysis ..." << endl;
         LLVMTaintSolver.solve();
         cout << "IFDS Taint Analysis ended" << endl;
+        // FinalResultsJson += LLVMTaintSolver.getAsJson();
+        if (PrintEdgeRecorder) {
+          LLVMTaintSolver.exportJson(graph_id);
+        }
+        break;
+      }
+
+      case DataFlowAnalysisType::IDE_GObjAnalysis: {
+        TaintConfiguration<const llvm::Value *> TSF;
+        GObjAnalysis TaintAnalysisProblem(ICFG, CH, IRDB, TSF,
+                                          EntryPoints);
+        LLVMIFDSSolver<const llvm::Value *, LLVMBasedICFG &> LLVMTaintSolver(
+            TaintAnalysisProblem, false);
+        cout << "IDE GObj Analysis ..." << endl;
+        LLVMTaintSolver.solve();
+        cout << "IDE GObj Analysis ended" << endl;
         // FinalResultsJson += LLVMTaintSolver.getAsJson();
         if (PrintEdgeRecorder) {
           LLVMTaintSolver.exportJson(graph_id);

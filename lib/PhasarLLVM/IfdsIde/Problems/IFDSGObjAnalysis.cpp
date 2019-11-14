@@ -501,25 +501,4 @@ void GObjTypeGraph::buildTypeGraph() {
   }
 }
 
-void GObjTypeGraph::dumpTypeMap() const {
-  for (auto &p : SuperClassMap) {
-    llvm::dbgs() << p.first << " -> " << p.second << "\n";
-  }
-}
-
-// Returns an LLVM value or the provided type name.
-// (Probably the last call to <type>_get_type()
-const llvm::Value *GObjTypeGraph::getValueForTypeName(const std::string &name) {
-  // lazily create a zero value an return it
-  auto it = TypeValueMap.find(name);
-  if (it != TypeValueMap.end())
-    return it->second;
-  auto zv = TypeValueModule.getOrInsertGlobal(name,
-                                              llvm::Type::getInt64Ty(TypeValueContext));
-
-  TypeValueMap[name] = zv;
-  TypeValues.insert(zv);
-  return zv;
-}
-
 } // namespace psr

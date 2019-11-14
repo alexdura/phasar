@@ -20,7 +20,7 @@ namespace psr {
 WISE_ENUM_CLASS(DataFlowAnalysisType, (IFDS_UninitializedVariables, 0),
                 IFDS_ConstAnalysis, IFDS_TaintAnalysis, IDE_TaintAnalysis,
                 IDE_TypeStateAnalysis, IFDS_TypeAnalysis, IFDS_SolverTest,
-                IFDS_GObjAnalysis,
+                IFDS_GObjAnalysis, IDE_GObjAnalysis,
                 IFDS_LinearConstantAnalysis, IFDS_EnvironmentVariableTracing,
                 IDE_LinearConstantAnalysis, IDE_SolverTest,
                 Intra_Mono_FullConstantPropagation, Intra_Mono_SolverTest,
