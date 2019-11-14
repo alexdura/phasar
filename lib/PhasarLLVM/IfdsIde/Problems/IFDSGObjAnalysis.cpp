@@ -437,6 +437,9 @@ void IFDSGObjAnalysis::printIFDSReport(
 void GObjTypeGraph::buildTypeGraph() {
   using namespace llvm;
 
+  // Object is the supertype of all types.
+  SuperClassMap["object"] = "object";
+
   // To get the type
   for (const Module *M : Modules) {
     for (const Function &F : M->getFunctionList()) {
@@ -476,7 +479,7 @@ void GObjTypeGraph::buildTypeGraph() {
             // That is the case when the class inherits GObject.
             if (const ConstantInt *IC = dyn_cast<ConstantInt>(arg0)) {
               if (IC->getZExtValue() == 80 /* type id of GObject, by convention */) {
-                SuperClassMap[subTypeName] = "GObject";
+                SuperClassMap[subTypeName] = "object";
               } else {
                 dbgs() << "Unknown type id: " << *IC << "\n";
               }

@@ -228,8 +228,8 @@ AnalysisController::AnalysisController(
         TaintConfiguration<const llvm::Value *> TSF;
         GObjAnalysis TaintAnalysisProblem(ICFG, CH, IRDB, TSF,
                                           EntryPoints);
-        LLVMIFDSSolver<const llvm::Value *, LLVMBasedICFG &> LLVMTaintSolver(
-            TaintAnalysisProblem, false);
+        LLVMIDESolver<const llvm::Value *, llvm::SmallBitVector, LLVMBasedICFG &> LLVMTaintSolver(
+          TaintAnalysisProblem, true, true);
         cout << "IDE GObj Analysis ..." << endl;
         LLVMTaintSolver.solve();
         cout << "IDE GObj Analysis ended" << endl;

@@ -11,6 +11,7 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/Debug.h>
+#include <llvm/ADT/SmallBitVector.h>
 
 namespace psr {
 
@@ -28,24 +29,53 @@ class GObjTypeGraph {
   std::map<std::string, llvm::Value*> TypeValueMap;
   std::unordered_set<const llvm::Value*> TypeValues;
 
+  std::unordered_map<std::string, llvm::SmallBitVector> TypeToBitVectorMap;
+//  std::unordered_map<llvm::SmallBitVector, std::string> BitVectorToTypeMap;
+
   llvm::LLVMContext TypeValueContext;
   llvm::Module TypeValueModule;
 
   void buildTypeGraph();
+
+  void initializeMaps() {
+    unsigned i = 0;
+    for (auto &tp : SuperClassMap) {
+      llvm::SmallBitVector bv(getNumTypes(), false);
+      bv.set(i);
+      TypeToBitVectorMap[tp.first] = bv;
+      i++;
+    }
+  }
 
 public:
   GObjTypeGraph(const std::set<llvm::Module*> &Modules) :
     Modules(Modules),
     TypeValueModule("module_gobj_type", TypeValueContext) {
     buildTypeGraph();
+    initializeMaps();
   }
 
   void dumpTypeMap() const {
     for (auto &p : SuperClassMap) {
-      llvm::dbgs() << p.first << " -> " << p.second << "\n";
+      auto it = TypeToBitVectorMap.find(p.first);
+      assert(it != TypeToBitVectorMap.end());
+      llvm::dbgs() << "[" << it->second.find_last() << "] "
+                   << p.first << " -> " << p.second << "\n";
     }
   }
 
+  unsigned getNumTypes() const {
+    return SuperClassMap.size();
+  }
+
+  // type name -> BitVector mapping, used by IDE transfer functions
+  llvm::SmallBitVector getBitVectorForTypeName(const std::string &name) const {
+    auto it = TypeToBitVectorMap.find(name);
+    assert(it != TypeToBitVectorMap.end() && "Name missing from the type database");
+    return it->second;
+  }
+
+  // type name -> Value* mapping, used by IFDS analysis
   // Returns an LLVM value or the provided type name.
   // (Probably the last call to <type>_get_type()
   const llvm::Value *getValueForTypeName(const std::string &name) {
@@ -69,6 +99,7 @@ public:
     return TypeValues;
   }
 
+  // helper functions
   static bool isGetTypeFunction(const llvm::Function *F) {
     return F->getName().endswith("_get_type");
   }

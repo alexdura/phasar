@@ -12,6 +12,7 @@
 #include <llvm/IR/Value.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/Debug.h>
+#include <llvm/ADT/SmallBitVector.h>
 
 #include <phasar/PhasarLLVM/ControlFlow/LLVMBasedICFG.h>
 #include <phasar/PhasarLLVM/IfdsIde/FlowFunction.h>
@@ -97,8 +98,7 @@ GObjAnalysis::getNormalFlowFunction(GObjAnalysis::n_t curr,
   if (auto *BC = llvm::dyn_cast<llvm::BitCastInst>(curr)) {
     struct BitCastTAFF : FlowFunction<d_t> {
       d_t Src, Dst;
-      const GObjTypeGraph &TG;
-      BitCastTAFF(d_t Src, d_t Dst, const GObjTypeGraph &TG) : Src(Src), Dst(Dst), TG(TG) {}
+      BitCastTAFF(d_t Src, d_t Dst) : Src(Src), Dst(Dst) {}
       std::set<d_t> computeTargets(d_t source) override {
         if (source == Src) {
           llvm::dbgs() << ">>> Bitcast of GObject " << *source << " at " << *Dst << "\n";
@@ -110,7 +110,7 @@ GObjAnalysis::getNormalFlowFunction(GObjAnalysis::n_t curr,
         }
       }
     };
-    return make_shared<BitCastTAFF>(BC->getOperand(0), BC, TypeInfo);
+    return make_shared<BitCastTAFF>(BC->getOperand(0), BC);
   }
   // Otherwise we do not care and leave everything as it is
   return Identity<GObjAnalysis::d_t>::getInstance();
@@ -140,9 +140,7 @@ GObjAnalysis::getCallFlowFunction(GObjAnalysis::n_t callStmt,
       llvm::isa<llvm::InvokeInst>(callStmt)) {
     return make_shared<MapFactsToCallee>(
       llvm::ImmutableCallSite(callStmt),
-      destMthd,
-      PredTrue,
-      PredZeroVal);
+      destMthd);
   }
 
   // Pass everything else as identity
@@ -164,7 +162,7 @@ GObjAnalysis::getRetFlowFunction(GObjAnalysis::n_t callSite,
       llvm::ImmutableCallSite(callSite), calleeMthd, exitStmt,
       [](GObjAnalysis::d_t formal) {
         return formal->getType()->isPointerTy();
-      }, PredTrue, PredZeroVal);
+      });
   // All other stuff is killed at this point
 }
 
@@ -187,9 +185,7 @@ GObjAnalysis::getSummaryFlowFunction(GObjAnalysis::n_t callStmt,
   string FunctionName = cxx_demangle(destMthd->getName().str());
   // If we have a special summary, which is neither a source function, nor
   // a sink function, then we provide it to the solver.
-  if (specialSummaries.containsSpecialSummary(FunctionName) &&
-      !SourceSinkFunctions.isSource(FunctionName) &&
-      !SourceSinkFunctions.isSink(FunctionName)) {
+  if (specialSummaries.containsSpecialSummary(FunctionName)) {
     return specialSummaries.getSpecialFlowFunctionSummary(FunctionName);
   } else {
     // Otherwise we indicate, that not special summary exists
@@ -212,9 +208,8 @@ GObjAnalysis::provideSpecialSummaries(GObjAnalysis::n_t callStmt,
     // to the return
     struct NewObjTAFF : FlowFunction<GObjAnalysis::d_t> {
       const llvm::Value *Arg0, *Ret;
-      const GObjTypeGraph &TI;
-      NewObjTAFF(const llvm::Value *arg0, const llvm::Value *ret, const GObjTypeGraph &TI) :
-        Arg0(arg0), Ret(ret), TI(TI) {}
+      NewObjTAFF(const llvm::Value *arg0, const llvm::Value *ret) :
+        Arg0(arg0), Ret(ret) {}
       set<GObjAnalysis::d_t>
       computeTargets(GObjAnalysis::d_t source) override {
         if (source  == Arg0) {
@@ -226,22 +221,19 @@ GObjAnalysis::provideSpecialSummaries(GObjAnalysis::n_t callStmt,
         }
       }
     };
-    return make_shared<NewObjTAFF>(Call.getArgument(0), callStmt, TypeInfo);
+    return make_shared<NewObjTAFF>(Call.getArgument(0), callStmt);
   } else if (Call.getCalledFunction() &&
              GObjTypeGraph::isGetTypeFunction(Call.getCalledFunction())) {
-    auto typeValue = TypeInfo.getValueForTypeName(
-      GObjTypeGraph::extractTypeName(Call.getCalledFunction()));
-
     struct GetTypeTF : FlowFunction<GObjAnalysis::d_t> {
-      const llvm::Value *TypeValue;
+      const llvm::Value *ZeroValue;
       const llvm::Value *Ret;
 
-      GetTypeTF(d_t TypeValue, d_t Ret) : TypeValue(TypeValue), Ret(Ret) {
+      GetTypeTF(d_t ZeroValue, d_t Ret) : ZeroValue(ZeroValue), Ret(Ret) {
       }
 
       set<d_t> computeTargets(d_t source) override {
-        if (source == TypeValue) {
-          return {Ret, TypeValue};
+        if (source == ZeroValue) {
+          return {Ret, ZeroValue};
         } else if (source == Ret) {
           return {};
         } else {
@@ -249,7 +241,7 @@ GObjAnalysis::provideSpecialSummaries(GObjAnalysis::n_t callStmt,
         }
       }
     };
-    return make_shared<GetTypeTF>(typeValue, callStmt);
+    return make_shared<GetTypeTF>(zerovalue, callStmt);
   }
 
   return nullptr;
@@ -264,28 +256,9 @@ GObjAnalysis::initialSeeds() {
   // tainted. Otherwise we just use the zero value to initialize the analysis.
   map<GObjAnalysis::n_t, set<GObjAnalysis::d_t>> SeedMap;
 
-  for (const llvm::Module *M : irdb.getAllModules()) {
-    for (const llvm::Function &F : M->getFunctionList()) {
-      for (const llvm::BasicBlock &B : F) {
-        for (const llvm::Instruction &I : B) {
-          if (GObjTypeGraph::isGetTypeCall(&I)) {
-            llvm::ImmutableCallSite CallSite(&I);
-            llvm::StringRef typeName = GObjTypeGraph::extractTypeName(CallSite.getCalledFunction());
-            // the TypeName->Value map is lazily initialized, so for the call to getZeroValues() below
-            // to work, we need to initialize it here.
-            TypeInfo.getValueForTypeName(typeName);
-          }
-        }
-      }
-    }
-  }
-
   for (auto &EntryPoint : EntryPoints) {
-    set<const llvm::Value*> initialValues(TypeInfo.getTypeValues().begin(),
-                                          TypeInfo.getTypeValues().end());
-    initialValues.insert(zerovalue);
     SeedMap.insert(std::make_pair(&icfg.getMethod(EntryPoint)->front().front(),
-                                  std::move(initialValues)));
+                                  std::set({zerovalue})));
   }
 
   return SeedMap;
@@ -302,6 +275,65 @@ GObjAnalysis::d_t GObjAnalysis::createZeroValue() {
 bool GObjAnalysis::isZeroValue(GObjAnalysis::d_t d) const {
   return LLVMZeroValue::getInstance()->isLLVMZeroValue(d);
 }
+
+
+class GenTypeEdgeFunction : public EdgeFunction<GObjAnalysis::v_t>,
+                            public std::enable_shared_from_this<GenTypeEdgeFunction> {
+  using v_t = GObjAnalysis::v_t;
+  v_t TypeBitVector;
+public:
+  GenTypeEdgeFunction(llvm::SmallBitVector TypeBitVector) : TypeBitVector(TypeBitVector) {}
+  v_t computeTarget(v_t source) override {
+    return TypeBitVector;
+  }
+
+  std::shared_ptr<EdgeFunction<v_t>>
+  composeWith(std::shared_ptr<EdgeFunction<v_t>> secondFunction) override {
+    if (auto *EI = dynamic_cast<EdgeIdentity<v_t> *>(
+          secondFunction.get())) {
+      return this->shared_from_this();
+    }
+    // If this is eventually reached, a constant function returning BOTTOM is a good option
+    assert (0 &&"This should not be reached");
+    return nullptr;
+  }
+
+  std::shared_ptr<EdgeFunction<v_t>>
+  joinWith(std::shared_ptr<EdgeFunction<v_t>> otherFunction) override {
+    if (auto *EI = dynamic_cast<EdgeIdentity<v_t> *>(
+          otherFunction.get())) {
+      // If this is eventually reached, a constant function returning BOTTOM is a good option
+      assert (0 && "A join with Identity should not occur.");
+      return nullptr;
+    }
+
+    // If the functions are equal, just return one of them
+    if (equal_to(otherFunction))
+      return shared_from_this();
+
+    // Otherwise, return a constant function that maps its input to the union of the type sets
+    auto *GT = dynamic_cast<GenTypeEdgeFunction *>(otherFunction.get());
+    v_t joinedType = GT->TypeBitVector | TypeBitVector;
+    return make_shared<GenTypeEdgeFunction>(joinedType);
+  }
+
+  bool equal_to(std::shared_ptr<EdgeFunction<v_t>> otherFunction) const override {
+    if (auto *EI = dynamic_cast<EdgeIdentity<v_t> *>(
+          otherFunction.get())) {
+      return false;
+    }
+    auto *GT = dynamic_cast<GenTypeEdgeFunction *>(otherFunction.get());
+    return GT->TypeBitVector == TypeBitVector;
+  }
+
+  void print(std::ostream &OS, bool isForDebug = false) const override {
+    OS << "_ -> [";
+    for (int i = TypeBitVector.find_first(); i >= 0; i = TypeBitVector.find_next(i)) {
+      OS << i << " ";
+    }
+    OS << "]";
+  }
+};
 
 
 shared_ptr<EdgeFunction<GObjAnalysis::v_t>>
@@ -349,45 +381,30 @@ GObjAnalysis::getSummaryEdgeFunction(GObjAnalysis::n_t callSite,
                                          GObjAnalysis::n_t retSite,
                                          GObjAnalysis::d_t retSiteNode) {
   cout << "GObjAnalysis::getSummaryEdgeFunction()\n";
-  return EdgeIdentity<GObjAnalysis::v_t>::getInstance();
+
+  llvm::ImmutableCallSite Call(callSite);
+
+  if (Call.getCalledFunction() &&
+      GObjTypeGraph::isGetTypeFunction(Call.getCalledFunction())) {
+    auto TypeName = GObjTypeGraph::extractTypeName(Call.getCalledFunction());
+    auto TypeBV = TypeInfo.getBitVectorForTypeName(TypeName);
+    return make_shared<GenTypeEdgeFunction>(TypeBV);
+  }
+
+  // return EdgeIdentity<GObjAnalysis::v_t>::getInstance();
+  return nullptr;
 }
 
 GObjAnalysis::v_t GObjAnalysis::join(GObjAnalysis::v_t lhs,
-                                             GObjAnalysis::v_t rhs) {
+                                     GObjAnalysis::v_t rhs) {
   cout << "GObjAnalysis::join()\n";
-  return topElement();
+  return lhs | rhs;
 }
 
 shared_ptr<EdgeFunction<GObjAnalysis::v_t>>
 GObjAnalysis::allTopFunction() {
   cout << "GObjAnalysis::allTopFunction()\n";
-  return make_shared<GObjAnalysisAllTop>(getNumGObjectTypes());
-}
-
-GObjAnalysis::v_t GObjAnalysis::GObjAnalysisAllTop::computeTarget(
-    GObjAnalysis::v_t source) {
-  cout << "GObjAnalysis::GObjAnalysisAllTop::computeTarget()\n";
-  return llvm::BitVector(NumGObjectTypes, false);
-}
-
-shared_ptr<EdgeFunction<GObjAnalysis::v_t>>
-GObjAnalysis::GObjAnalysisAllTop::composeWith(
-    shared_ptr<EdgeFunction<GObjAnalysis::v_t>> secondFunction) {
-  cout << "GObjAnalysis::GObjAnalysisAllTop::composeWith()\n";
-  return EdgeIdentity<GObjAnalysis::v_t>::getInstance();
-}
-
-shared_ptr<EdgeFunction<GObjAnalysis::v_t>>
-GObjAnalysis::GObjAnalysisAllTop::joinWith(
-    shared_ptr<EdgeFunction<GObjAnalysis::v_t>> otherFunction) {
-  cout << "GObjAnalysis::GObjAnalysisAllTop::joinWith()\n";
-  return EdgeIdentity<GObjAnalysis::v_t>::getInstance();
-}
-
-bool GObjAnalysis::GObjAnalysisAllTop::equal_to(
-    shared_ptr<EdgeFunction<GObjAnalysis::v_t>> other) const {
-  cout << "GObjAnalysis::GObjAnalysisAllTop::equalTo()\n";
-  return false;
+  return make_shared<GenTypeEdgeFunction>(topElement());
 }
 
 void GObjAnalysis::printNode(ostream &os, GObjAnalysis::n_t n) const {
@@ -434,6 +451,10 @@ void GObjAnalysis::printIFDSReport(
       os << "-------------------\n";
     }
   }
+}
+
+void GObjAnalysis::printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t> &SR) {
+    os << "No IDE report available!\n";
 }
 
 } // namespace psr

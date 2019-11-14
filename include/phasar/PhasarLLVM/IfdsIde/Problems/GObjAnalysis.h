@@ -47,13 +47,13 @@ class LLVMBasedICFG;
  */
 class GObjAnalysis
     : public LLVMDefaultIDETabulationProblem<const llvm::Value *,
-                                              llvm::BitVector,
-                                              LLVMBasedICFG &> {
+                                             llvm::SmallBitVector,
+                                             LLVMBasedICFG &> {
 public:
   typedef const llvm::Value *d_t;
   typedef const llvm::Instruction *n_t;
   typedef const llvm::Function *m_t;
-  typedef llvm::BitVector v_t;
+  typedef llvm::SmallBitVector v_t;
   typedef LLVMBasedICFG &i_t;
 
 private:
@@ -133,37 +133,14 @@ public:
   getSummaryEdgeFunction(n_t callSite, d_t callNode, n_t retSite,
                          d_t retSiteNode) override;
 
-  class GObjAnalysisAllTop
-      : public EdgeFunction<v_t>,
-        public std::enable_shared_from_this<GObjAnalysisAllTop> {
-    unsigned NumGObjectTypes;
-
-    v_t computeTarget(v_t source) override;
-
-    std::shared_ptr<EdgeFunction<v_t>>
-    composeWith(std::shared_ptr<EdgeFunction<v_t>> secondFunction) override;
-
-    std::shared_ptr<EdgeFunction<v_t>>
-    joinWith(std::shared_ptr<EdgeFunction<v_t>> otherFunction) override;
-
-    bool equal_to(std::shared_ptr<EdgeFunction<v_t>> other) const override;
-
-  public:
-    GObjAnalysisAllTop(unsigned NumGObjectTypes) : NumGObjectTypes(NumGObjectTypes) {}
-  };
-
-  unsigned getNumGObjectTypes() const {
-    return TypeInfo.getTypeValues().size();
-  }
-
   v_t topElement() override {
     // all zeros
-    return llvm::BitVector(getNumGObjectTypes(), false);
+    return llvm::SmallBitVector(TypeInfo.getNumTypes(), false);
   }
 
   v_t bottomElement() override {
-    // all ones
-    return llvm::BitVector(getNumGObjectTypes(), true);
+    // all ones, this can be any type
+    return llvm::SmallBitVector(TypeInfo.getNumTypes(), true);
   }
 
   v_t join(v_t lhs, v_t rhs) override;
@@ -180,8 +157,21 @@ public:
   void printIFDSReport(std::ostream &os,
                        SolverResults<n_t, d_t, BinaryDomain> &SR) override;
 
+  void printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t> &SR) override;
+
   void printValue(std::ostream &os, v_t v) const override;
 };
 } // namespace psr
+
+
+namespace llvm {
+bool operator<(const llvm::SmallBitVector& left, const llvm::SmallBitVector& right) {
+  for (int i = left.find_first(), j = right.find_first(); ; i = left.find_next(i), j = right.find_next(j)) {
+    if (i > j)
+      return true;
+  }
+  return false;
+}
+}
 
 #endif
