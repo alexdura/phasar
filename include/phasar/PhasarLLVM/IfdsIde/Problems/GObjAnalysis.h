@@ -1,10 +1,10 @@
 /******************************************************************************
- * Copyright (c) 2017 Philipp Schubert.
+ * Copyright (c) 2019 Alexandru Dura
  * All rights reserved. This program and the accompanying materials are made
  * available under the terms of LICENSE.txt.
  *
  * Contributors:
- *     Philipp Schubert and others
+ *    Noric Couderc, Alexandru Dura, Claudio Mandrioli
  *****************************************************************************/
 
 #ifndef PHASAR_PHASARLLVM_IFDSIDE_PROBLEMS_GOBJANALYSIS_H_
@@ -57,7 +57,6 @@ public:
   typedef LLVMBasedICFG &i_t;
 
 private:
-  TaintConfiguration<const llvm::Value *> SourceSinkFunctions;
   std::vector<std::string> EntryPoints;
   GObjTypeGraph TypeInfo;
   std::function<bool(const llvm::Value*)> PredTrue = [](const llvm::Value*) {return true;};
@@ -78,7 +77,6 @@ public:
    */
   GObjAnalysis(i_t icfg, const LLVMTypeHierarchy &th,
                     const ProjectIRDB &irdb,
-                    TaintConfiguration<const llvm::Value *> TSF,
                     std::vector<std::string> EntryPoints = {"main"});
 
   ~GObjAnalysis() override = default;
@@ -157,6 +155,11 @@ public:
   void printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t> &SR) override;
 
   void printValue(std::ostream &os, v_t v) const override;
+
+  enum class Error {
+    UNSAFE_NARROWING_CAST,
+    INVALID_CAST
+  };
 };
 } // namespace psr
 

@@ -1,10 +1,10 @@
 /******************************************************************************
- * Copyright (c) 2017 Philipp Schubert.
+ * Copyright (c) 2019 Alexandru Dura
  * All rights reserved. This program and the accompanying materials are made
  * available under the terms of LICENSE.txt.
  *
  * Contributors:
- *     Philipp Schubert and others
+ *    Noric Couderc, Alexandru Dura, Claudio Mandrioli
  *****************************************************************************/
 
 #include <llvm/IR/CallSite.h>
@@ -37,9 +37,9 @@ using namespace psr;
 namespace psr {
 GObjAnalysis::GObjAnalysis(
     i_t icfg, const LLVMTypeHierarchy &th, const ProjectIRDB &irdb,
-    TaintConfiguration<GObjAnalysis::d_t> TSF, vector<string> EntryPoints)
+    vector<string> EntryPoints)
     : LLVMDefaultIDETabulationProblem(icfg, th, irdb),
-      SourceSinkFunctions(TSF), EntryPoints(EntryPoints), TypeInfo(irdb.getAllModules()) {
+      EntryPoints(EntryPoints), TypeInfo(irdb.getAllModules()) {
   GObjAnalysis::zerovalue = createZeroValue();
   llvm::outs() << "----- Type map ----\n";
   TypeInfo.dumpTypeMap();
@@ -523,5 +523,6 @@ void GObjAnalysis::printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t>
 
   os << "---- End of GObj type analysis results-----\n";
 }
+
 
 } // namespace psr
