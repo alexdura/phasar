@@ -277,6 +277,73 @@ bool GObjAnalysis::isZeroValue(GObjAnalysis::d_t d) const {
 }
 
 
+
+class MergeTypeEdgeFunction : public EdgeFunction<GObjAnalysis::v_t>,
+                              public std::enable_shared_from_this<MergeTypeEdgeFunction> {
+  using v_t = GObjAnalysis::v_t;
+  v_t TypeBitVector;
+  friend class GenTypeEdgeFunction;
+public:
+  MergeTypeEdgeFunction(llvm::SmallBitVector TypeBitVector) : TypeBitVector(TypeBitVector) {}
+
+  v_t computeTarget(v_t source) override {
+    return TypeBitVector | source;
+  }
+
+  std::shared_ptr<EdgeFunction<v_t>>
+  composeWith(std::shared_ptr<EdgeFunction<v_t>> secondFunction) override {
+    if (auto *EI = dynamic_cast<EdgeIdentity<v_t> *>(
+          secondFunction.get())) {
+      return this->shared_from_this();
+    }
+
+    if (auto *GT = dynamic_cast<MergeTypeEdgeFunction *>(
+          secondFunction.get())) {
+      if (equal_to(secondFunction))
+        return shared_from_this();
+
+      return make_shared<MergeTypeEdgeFunction>(GT->TypeBitVector | TypeBitVector);
+    }
+
+    // a this point, the other type should be a GenTypeEdgeFunction
+    return secondFunction->composeWith(shared_from_this());
+  }
+
+  std::shared_ptr<EdgeFunction<v_t>>
+  joinWith(std::shared_ptr<EdgeFunction<v_t>> otherFunction) override {
+    if (auto *EI = dynamic_cast<EdgeIdentity<v_t> *>(
+          otherFunction.get())) {
+      return this->shared_from_this();
+    }
+
+    if (auto *GT = dynamic_cast<MergeTypeEdgeFunction *>(
+          otherFunction.get())) {
+      if (equal_to(otherFunction))
+        return shared_from_this();
+
+      return make_shared<MergeTypeEdgeFunction>(GT->TypeBitVector | TypeBitVector);
+    }
+
+    // a this point, the other type should be a GenTypeEdgeFunction
+    return otherFunction->composeWith(shared_from_this());
+  }
+
+  bool equal_to(std::shared_ptr<EdgeFunction<v_t>> otherFunction) const override {
+    if (auto *GT = dynamic_cast<MergeTypeEdgeFunction *>(otherFunction.get())) {
+      return GT->TypeBitVector == TypeBitVector;
+    }
+    return false;
+  }
+
+  void print(std::ostream &OS, bool isForDebug = false) const override {
+    OS << "x -> x U [";
+    for (int i = TypeBitVector.find_first(); i >= 0; i = TypeBitVector.find_next(i)) {
+      OS << i << " ";
+    }
+    OS << "]";
+  }
+};
+
 class GenTypeEdgeFunction : public EdgeFunction<GObjAnalysis::v_t>,
                             public std::enable_shared_from_this<GenTypeEdgeFunction> {
   using v_t = GObjAnalysis::v_t;
@@ -289,13 +356,7 @@ public:
 
   std::shared_ptr<EdgeFunction<v_t>>
   composeWith(std::shared_ptr<EdgeFunction<v_t>> secondFunction) override {
-    if (auto *EI = dynamic_cast<EdgeIdentity<v_t> *>(
-          secondFunction.get())) {
-      return this->shared_from_this();
-    }
-    // If this is eventually reached, a constant function returning BOTTOM is a good option
-    assert (0 &&"This should not be reached");
-    return nullptr;
+    return this->shared_from_this();
   }
 
   std::shared_ptr<EdgeFunction<v_t>>
@@ -303,8 +364,11 @@ public:
     if (auto *EI = dynamic_cast<EdgeIdentity<v_t> *>(
           otherFunction.get())) {
       // If this is eventually reached, a constant function returning BOTTOM is a good option
-      assert (0 && "A join with Identity should not occur.");
-      return nullptr;
+      return make_shared<MergeTypeEdgeFunction>(TypeBitVector);
+    }
+
+    if (auto *MT = dynamic_cast<MergeTypeEdgeFunction *>(otherFunction.get())) {
+      return make_shared<MergeTypeEdgeFunction>(MT->TypeBitVector | TypeBitVector);
     }
 
     // If the functions are equal, just return one of them
@@ -318,12 +382,9 @@ public:
   }
 
   bool equal_to(std::shared_ptr<EdgeFunction<v_t>> otherFunction) const override {
-    if (auto *EI = dynamic_cast<EdgeIdentity<v_t> *>(
-          otherFunction.get())) {
-      return false;
-    }
-    auto *GT = dynamic_cast<GenTypeEdgeFunction *>(otherFunction.get());
-    return GT->TypeBitVector == TypeBitVector;
+    if (auto *GT = dynamic_cast<GenTypeEdgeFunction *>(otherFunction.get()))
+      return GT->TypeBitVector == TypeBitVector;
+    return false;
   }
 
   void print(std::ostream &OS, bool isForDebug = false) const override {
@@ -342,6 +403,9 @@ GObjAnalysis::getNormalEdgeFunction(GObjAnalysis::n_t curr,
                                         GObjAnalysis::n_t succ,
                                         GObjAnalysis::d_t succNode) {
   cout << "GObjAnalysis::getNormalEdgeFunction()\n";
+  // if (isZeroValue(currNode) && isZeroValue(succNode)) {
+  //   return make_shared<GenTypeEdgeFunction>(topElement());
+  // }
   return EdgeIdentity<GObjAnalysis::v_t>::getInstance();
 }
 
@@ -391,8 +455,7 @@ GObjAnalysis::getSummaryEdgeFunction(GObjAnalysis::n_t callSite,
     return make_shared<GenTypeEdgeFunction>(TypeBV);
   }
 
-  // return EdgeIdentity<GObjAnalysis::v_t>::getInstance();
-  return nullptr;
+  return EdgeIdentity<GObjAnalysis::v_t>::getInstance();
 }
 
 GObjAnalysis::v_t GObjAnalysis::join(GObjAnalysis::v_t lhs,
@@ -422,7 +485,11 @@ void GObjAnalysis::printMethod(ostream &os,
 }
 
 void GObjAnalysis::printValue(ostream &os, v_t v) const {
-  os << " ";
+  os << "[";
+  for (int i = v.find_first(); i >= 0; i = v.find_next(i)) {
+    os << i << " ";
+  }
+  os << "]";
 }
 
 
