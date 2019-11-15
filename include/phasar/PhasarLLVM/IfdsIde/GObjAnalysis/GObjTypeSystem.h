@@ -174,13 +174,15 @@ public:
   bool isWideningCast(std::string from, std::string to) const {
     if (from == to)
       return true;
-    auto it = SuperTypeMap.find(to);
-    return it->second.count(from);
+    auto it = SuperTypeMap.find(from);
+    assert(it != SuperTypeMap.end() && "Type missing from the map");
+    return it->second.count(to);
   }
 
   bool isNarrowingCast(std::string from, std::string to) const {
-    auto it = SuperTypeMap.find(from);
-    return it->second.count(to);
+    auto it = SuperTypeMap.find(to);
+    assert(it != SuperTypeMap.end() && "Type missing from the map");
+    return it->second.count(from);
   }
 
   std::string getTypeFromTypeId(unsigned tid) const {

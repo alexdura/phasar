@@ -20,6 +20,7 @@
 #include <phasar/PhasarLLVM/IfdsIde/FlowFunctions/GenIf.h>
 #include <phasar/PhasarLLVM/IfdsIde/FlowFunctions/Identity.h>
 #include <phasar/PhasarLLVM/IfdsIde/FlowFunctions/KillAll.h>
+#include <phasar/PhasarLLVM/IfdsIde/FlowFunctions/Transfer.h>
 #include <phasar/PhasarLLVM/IfdsIde/LLVMFlowFunctions/MapFactsToCallee.h>
 #include <phasar/PhasarLLVM/IfdsIde/LLVMFlowFunctions/MapFactsToCaller.h>
 #include <phasar/PhasarLLVM/IfdsIde/LLVMZeroValue.h>
@@ -123,17 +124,6 @@ GObjAnalysis::getCallFlowFunction(GObjAnalysis::n_t callStmt,
   LOG_IF_ENABLE(BOOST_LOG_SEV(lg, DEBUG)
                 << "GObjAnalysis::getCallFlowFunction()");
   string FunctionName = cxx_demangle(destMthd->getName().str());
-  // Check if a source or sink function is called:
-  // We then can kill all data-flow facts not following the called function.
-  // The respective taints or leaks are then generated in the corresponding
-  // call to return flow function.
-
-#if 0
-  if (SourceSinkFunctions.isSource(FunctionName) ||
-      (SourceSinkFunctions.isSink(FunctionName))) {
-    return KillAll<GObjAnalysis::d_t>::getInstance();
-  }
-#endif
 
   // Map the actual into the formal parameters
   if (llvm::isa<llvm::CallInst>(callStmt) ||
@@ -242,6 +232,8 @@ GObjAnalysis::provideSpecialSummaries(GObjAnalysis::n_t callStmt,
       }
     };
     return make_shared<GetTypeTF>(zerovalue, callStmt);
+  } else if (TypeInfo.isTypeCastFunction(destMthd)) {
+    return make_shared<Transfer<d_t>>(callStmt, Call.getArgument(0));
   }
 
   return nullptr;
@@ -448,8 +440,10 @@ GObjAnalysis::getSummaryEdgeFunction(GObjAnalysis::n_t callSite,
 
   llvm::ImmutableCallSite Call(callSite);
 
-  if (Call.getCalledFunction() &&
-      GObjTypeGraph::isGetTypeFunction(Call.getCalledFunction())) {
+  if (!Call.getCalledFunction())
+    return EdgeIdentity<GObjAnalysis::v_t>::getInstance();
+
+  if (GObjTypeGraph::isGetTypeFunction(Call.getCalledFunction())) {
     auto TypeName = GObjTypeGraph::extractTypeName(Call.getCalledFunction());
     auto TypeBV = TypeInfo.getBitVectorForTypeName(TypeName);
     return make_shared<GenTypeEdgeFunction>(TypeBV);
@@ -493,6 +487,8 @@ void GObjAnalysis::printValue(ostream &os, v_t v) const {
 }
 
 void GObjAnalysis::printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t> &SR) {
+  os << "------- GObj type analysis results --------\n";
+
   for (auto F : icfg.getAllMethods()) {
     if (!TypeInfo.isTypeCastFunction(F))
       continue;
@@ -507,18 +503,25 @@ void GObjAnalysis::printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t>
           if (res.first != Call.getArgument(0))
             continue;
           auto &typeVector = res.second;
+          std::stringstream message;
           for (int i = typeVector.find_first(); i >= 0; i = typeVector.find_next(i)) {
             std::string fromType = TypeInfo.getTypeFromTypeId(i);
             if (TypeInfo.isNarrowingCast(fromType, toType)) {
-              os << "Possibly unsafe cast from " << fromType << " to "  << toType << "\n";
+              message << "\tPotentially unsafe cast from " << fromType << " to "  << toType << "\n";
             } else if (!TypeInfo.isWideningCast(fromType, toType)) {
-              os << "Invalid cast from " << fromType << " to " << toType << "\n";
+              message << "\tInvalid cast from " << fromType << " to " << toType << "\n";
             }
+          }
+          if (!message.str().empty()) {
+            os << "ERROR at " << llvmValueToSrc(res.first, false) << "\n";
+            os << message.str();
           }
         }
       }
     }
   }
+
+  os << "---- End of GObj type analysis results-----\n";
 }
 
 } // namespace psr
