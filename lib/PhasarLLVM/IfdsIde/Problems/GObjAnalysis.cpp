@@ -492,36 +492,33 @@ void GObjAnalysis::printValue(ostream &os, v_t v) const {
   os << "]";
 }
 
-
-void GObjAnalysis::printIFDSReport(
-    std::ostream &os, SolverResults<n_t, d_t, BinaryDomain> &SR) {
-  os << "\n----- Found the following leaks -----\n";
-  if (Leaks.empty()) {
-    os << "No leaks found!\n";
-  } else {
-    for (auto Leak : Leaks) {
-      os << "At instruction\nIR  : " << llvmIRToString(Leak.first) << '\n';
-      os << llvmValueToSrc(Leak.first);
-      os << "\n\nLeak(s):\n";
-      for (auto LeakedValue : Leak.second) {
-        os << "IR  : ";
-        // Get the actual leaked alloca instruction if possible
-        if (auto Load = llvm::dyn_cast<llvm::LoadInst>(LeakedValue)) {
-          os << llvmIRToString(Load->getPointerOperand()) << '\n'
-             << llvmValueToSrc(Load->getPointerOperand()) << '\n';
-
-        } else {
-          os << llvmIRToString(LeakedValue) << '\n'
-             << llvmValueToSrc(LeakedValue) << '\n';
+void GObjAnalysis::printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t> &SR) {
+  for (auto F : icfg.getAllMethods()) {
+    if (!TypeInfo.isTypeCastFunction(F))
+      continue;
+    std::string toType = F->getName().lower();
+    for (auto I : icfg.getCallersOf(F)) {
+      llvm::ImmutableCallSite Call(I);
+      auto results = SR.resultsAt(I, /*strip zeros*/ true);
+      if (results.empty()) {
+        os << "\nNo results available!\n";
+      } else {
+        for (auto res : results) {
+          if (res.first != Call.getArgument(0))
+            continue;
+          auto &typeVector = res.second;
+          for (int i = typeVector.find_first(); i >= 0; i = typeVector.find_next(i)) {
+            std::string fromType = TypeInfo.getTypeFromTypeId(i);
+            if (TypeInfo.isNarrowingCast(fromType, toType)) {
+              os << "Possibly unsafe cast from " << fromType << " to "  << toType << "\n";
+            } else if (!TypeInfo.isWideningCast(fromType, toType)) {
+              os << "Invalid cast from " << fromType << " to " << toType << "\n";
+            }
+          }
         }
       }
-      os << "-------------------\n";
     }
   }
-}
-
-void GObjAnalysis::printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t> &SR) {
-    os << "No IDE report available!\n";
 }
 
 } // namespace psr

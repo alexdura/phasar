@@ -479,7 +479,7 @@ void GObjTypeGraph::buildTypeGraph() {
             // That is the case when the class inherits GObject.
             if (const ConstantInt *IC = dyn_cast<ConstantInt>(arg0)) {
               if (IC->getZExtValue() == 80 /* type id of GObject, by convention */) {
-                SuperClassMap[subTypeName] = "object";
+                SuperClassMap[subTypeName] = TOP_LEVEL_TYPE;
               } else {
                 dbgs() << "Unknown type id: " << *IC << "\n";
               }

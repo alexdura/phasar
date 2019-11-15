@@ -154,9 +154,6 @@ public:
 
   void printMethod(std::ostream &os, m_t m) const override;
 
-  void printIFDSReport(std::ostream &os,
-                       SolverResults<n_t, d_t, BinaryDomain> &SR) override;
-
   void printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t> &SR) override;
 
   void printValue(std::ostream &os, v_t v) const override;
