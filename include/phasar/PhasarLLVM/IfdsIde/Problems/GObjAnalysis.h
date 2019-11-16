@@ -16,6 +16,7 @@
 #include <phasar/PhasarLLVM/IfdsIde/LLVMDefaultIDETabulationProblem.h>
 #include <phasar/PhasarLLVM/Utils/TaintConfiguration.h>
 #include <phasar/PhasarLLVM/IfdsIde/GObjAnalysis/GObjTypeSystem.h>
+#include <phasar/PhasarLLVM/ControlFlow/LLVMBasedICFG.h>
 #include <llvm/ADT/BitVector.h>
 #include <set>
 #include <string>
@@ -157,9 +158,54 @@ public:
   void printValue(std::ostream &os, v_t v) const override;
 
   enum class Error {
-    UNSAFE_NARROWING_CAST,
+    NARROWING_CAST,
     INVALID_CAST
   };
+
+  using ErrorEntryT = std::tuple<Error, const llvm::Value*, std::string, std::string>;
+
+  // We use this method with two type parameters: LLVMIDESolver and SolverResults.
+  // Both types provide the resultsAt method.
+  template<typename ResultT>
+  std::vector<GObjAnalysis::ErrorEntryT> collectErrors(ResultT &SR) const {
+    std::vector<ErrorEntryT> errors;
+    for (auto F : icfg.getAllMethods()) {
+      if (!TypeInfo.isTypeCastFunction(F))
+        continue;
+      std::string toType = F->getName().lower();
+      for (auto I : icfg.getCallersOf(F)) {
+        llvm::ImmutableCallSite Call(I);
+        auto results = SR.resultsAt(I, /*strip zeros*/ true);
+
+        if (results.empty())
+          continue;
+
+        for (auto res : results) {
+          if (res.first != Call.getArgument(0))
+            continue;
+          auto &typeVector = res.second;
+          std::stringstream message;
+          for (int i = typeVector.find_first(); i >= 0; i = typeVector.find_next(i)) {
+            std::string fromType = TypeInfo.getTypeFromTypeId(i);
+            if (TypeInfo.isNarrowingCast(fromType, toType)) {
+              errors.push_back(make_tuple(
+                                 Error::NARROWING_CAST,
+                                 res.first,
+                                 fromType,
+                                 toType));
+            } else if (!TypeInfo.isWideningCast(fromType, toType)) {
+              errors.push_back(make_tuple(
+                                 Error::INVALID_CAST,
+                                 res.first,
+                                 fromType,
+                                 toType));
+            }
+          }
+        }
+      }
+    }
+    return errors;
+  }
 };
 } // namespace psr
 

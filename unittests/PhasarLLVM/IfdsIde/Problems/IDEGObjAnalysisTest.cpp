@@ -10,12 +10,18 @@ using namespace psr;
 
 using SolverT = LLVMIDESolver<const llvm::Value *, GObjAnalysis::v_t, LLVMBasedICFG &>;
 
+using ExpectedErrorT = std::tuple<GObjAnalysis::Error,
+                          unsigned /* line */,
+                          unsigned /* col */,
+                          std::string /* fromType */,
+                          std::string /* toType */>;
+
 /* ============== TEST FIXTURE ============== */
 class IDEGObjAnalysisTest : public ::testing::Test {
 protected:
   const std::string pathToLLFiles =
       PhasarConfig::getPhasarConfig().PhasarDirectory() +
-      "build/test/llvm_test_code/linear_constant/";
+      "build/test/llvm_test_code/gobj/";
   const std::vector<std::string> EntryPoints = {"main"};
 
   ProjectIRDB *IRDB;
@@ -47,37 +53,45 @@ protected:
     delete Problem;
   }
 
-  /**
-   * We map instruction id to value for the ground truth. ID has to be
-   * a string since Argument ID's are not integer type (e.g. main.0 for argc).
-   * @param groundTruth results to compare against
-   * @param solver provides the results
-   */
-  // void compareResults(
-  //     const std::map<std::string, int64_t> &groundTruth,
-  //     SolverT &solver) {
-  //   std::map<std::string, int64_t> results;
-  //   for (auto M : IRDB->getAllModules()) {
-  //     for (auto &F : *M) {
-  //       for (auto exit : ICFG->getExitPointsOf(&F)) {
-  //         for (auto res : solver.resultsAt(exit, true)) {
-  //           results.insert(std::pair<std::string, int64_t>(
-  //               getMetaDataID(res.first), res.second));
-  //         }
-  //       }
-  //     }
-  //   }
-  //   EXPECT_EQ(results, groundTruth);
-  // }
+  void compareResults(
+    const std::vector<ExpectedErrorT> &groundTruth,
+    const std::vector<GObjAnalysis::ErrorEntryT> &results) {
+
+    EXPECT_EQ(groundTruth.size(), results.size());
+    if (groundTruth.size() != results.size())
+      return;
+
+    for (unsigned i = 0; i < groundTruth.size(); ++i) {
+      auto &groundTruthEntry = groundTruth[i];
+      auto &resultsEntry = results[i];
+      // same class of error
+      EXPECT_EQ(get<0>(groundTruthEntry), get<0>(resultsEntry));
+      const llvm::Instruction *I = llvm::cast<llvm::Instruction>(get<1>(resultsEntry));
+      unsigned line = I->getDebugLoc().getLine();
+      unsigned col = I->getDebugLoc().getCol();
+      EXPECT_EQ(get<1>(groundTruthEntry), line);
+      EXPECT_EQ(get<2>(groundTruthEntry), col);
+      EXPECT_EQ(get<3>(groundTruthEntry), get<2>(resultsEntry));
+      EXPECT_EQ(get<4>(groundTruthEntry), get<3>(resultsEntry));
+    }
+  }
 }; // Test Fixture
 
 /* ============== BASIC TESTS ============== */
 TEST_F(IDEGObjAnalysisTest, HandleBasicTest_01) {
-  Initialize({pathToLLFiles + "basic_01_cpp_dbg.ll"});
+  Initialize({pathToLLFiles + "invalid-narrowing-cast_c_dbg.ll",
+        pathToLLFiles + "viewer-file_c_dbg.ll",
+        pathToLLFiles + "viewer-pink_c_dbg.ll"});
   SolverT llvmgobjsolver(*Problem, false, true);
   llvmgobjsolver.solve();
-  const std::map<std::string, int64_t> gt = {{"0", 0}, {"1", 13}};
-  // compareResults(gt, llvmgobjsolver);
+
+  auto results = Problem->collectErrors(llvmgobjsolver);
+
+  const std::vector<ExpectedErrorT> expectedErrors = {
+    {GObjAnalysis::Error::NARROWING_CAST, 12, 38, "viewer_file", "viewer_pink"}
+  };
+
+  compareResults(expectedErrors, results);
 }
 
 

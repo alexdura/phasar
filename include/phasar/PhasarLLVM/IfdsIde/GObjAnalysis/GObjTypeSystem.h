@@ -110,7 +110,7 @@ public:
     return F->getName().endswith("_get_type");
   }
 
-  bool isTypeCastFunction(const llvm::Function *F) {
+  bool isTypeCastFunction(const llvm::Function *F) const {
     // for a type name named view_file, the cast functions
     // is called VIEW_FILE.
     llvm::StringRef name = F->getName();

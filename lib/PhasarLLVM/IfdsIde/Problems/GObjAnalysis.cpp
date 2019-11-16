@@ -31,6 +31,8 @@
 #include <phasar/Utils/LLVMShorthands.h>
 #include <phasar/Utils/Logger.h>
 
+#include <vector>
+
 using namespace std;
 using namespace psr;
 
@@ -488,7 +490,7 @@ void GObjAnalysis::printValue(ostream &os, v_t v) const {
 
 void GObjAnalysis::printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t> &SR) {
   os << "------- GObj type analysis results --------\n";
-
+# if 0
   for (auto F : icfg.getAllMethods()) {
     if (!TypeInfo.isTypeCastFunction(F))
       continue;
@@ -498,31 +500,47 @@ void GObjAnalysis::printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t>
       auto results = SR.resultsAt(I, /*strip zeros*/ true);
       if (results.empty()) {
         os << "\nNo results available!\n";
-      } else {
-        for (auto res : results) {
-          if (res.first != Call.getArgument(0))
-            continue;
-          auto &typeVector = res.second;
-          std::stringstream message;
-          for (int i = typeVector.find_first(); i >= 0; i = typeVector.find_next(i)) {
-            std::string fromType = TypeInfo.getTypeFromTypeId(i);
-            if (TypeInfo.isNarrowingCast(fromType, toType)) {
-              message << "\tPotentially unsafe cast from " << fromType << " to "  << toType << "\n";
-            } else if (!TypeInfo.isWideningCast(fromType, toType)) {
-              message << "\tInvalid cast from " << fromType << " to " << toType << "\n";
-            }
+        continue;
+      }
+      for (auto res : results) {
+        if (res.first != Call.getArgument(0))
+          continue;
+        auto &typeVector = res.second;
+        std::stringstream message;
+        for (int i = typeVector.find_first(); i >= 0; i = typeVector.find_next(i)) {
+          std::string fromType = TypeInfo.getTypeFromTypeId(i);
+          if (TypeInfo.isNarrowingCast(fromType, toType)) {
+            message << "\tPotentially unsafe cast from " << fromType << " to "  << toType << "\n";
+          } else if (!TypeInfo.isWideningCast(fromType, toType)) {
+            message << "\tInvalid cast from " << fromType << " to " << toType << "\n";
           }
-          if (!message.str().empty()) {
-            os << "ERROR at " << llvmValueToSrc(res.first, false) << "\n";
-            os << message.str();
-          }
+        }
+        if (!message.str().empty()) {
+          os << "ERROR at " << llvmValueToSrc(res.first, false) << "\n";
+          os << message.str();
         }
       }
     }
   }
+#endif
+  for (auto &err : collectErrors(SR)) {
+    os << "ERROR at " << llvmValueToSrc(std::get<1>(err), false) << "\n";
+    switch (std::get<0>(err)) {
+    case Error::INVALID_CAST:
+      os << "\tInvalid cast ";
+      break;
+    case Error::NARROWING_CAST:
+      os << "\tNarrowing cast ";
+      break;
+    default:
+      os << "\tUnknown error ";
+      break;
+    }
+    auto &fromType = get<2>(err);
+    auto &toType = get<3>(err);
+    os << "from '" << fromType << "' to '" << toType << "'\n";
+  }
 
   os << "---- End of GObj type analysis results-----\n";
 }
-
-
-} // namespace psr
+} // namespace prs
