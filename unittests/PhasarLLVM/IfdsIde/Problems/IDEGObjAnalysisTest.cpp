@@ -57,7 +57,7 @@ protected:
     const std::vector<ExpectedErrorT> &groundTruth,
     const std::vector<GObjAnalysis::ErrorEntryT> &results) {
 
-    EXPECT_EQ(groundTruth.size(), results.size());
+    EXPECT_EQ(groundTruth.size(), results.size()) << "Different number of errors.";
     if (groundTruth.size() != results.size())
       return;
 
@@ -65,7 +65,7 @@ protected:
       auto &groundTruthEntry = groundTruth[i];
       auto &resultsEntry = results[i];
       // same class of error
-      EXPECT_EQ(get<0>(groundTruthEntry), get<0>(resultsEntry));
+      EXPECT_EQ(get<0>(groundTruthEntry), get<0>(resultsEntry)) << "Different error type.";
       const llvm::Instruction *I = llvm::cast<llvm::Instruction>(get<1>(resultsEntry));
       unsigned line = I->getDebugLoc().getLine();
       unsigned col = I->getDebugLoc().getCol();
@@ -78,11 +78,27 @@ protected:
 }; // Test Fixture
 
 /* ============== BASIC TESTS ============== */
-TEST_F(IDEGObjAnalysisTest, HandleBasicTest_01) {
+TEST_F(IDEGObjAnalysisTest, NarrowingTestBasic_01) {
   Initialize({pathToLLFiles + "invalid-narrowing-cast_c_dbg.ll",
         pathToLLFiles + "viewer-file_c_dbg.ll",
         pathToLLFiles + "viewer-pink_c_dbg.ll"});
   SolverT llvmgobjsolver(*Problem, false, true);
+  llvmgobjsolver.solve();
+
+  auto results = Problem->collectErrors(llvmgobjsolver);
+
+  const std::vector<ExpectedErrorT> expectedErrors = {
+    {GObjAnalysis::Error::NARROWING_CAST, 12, 38, "viewer_file", "viewer_pink"}
+  };
+
+  compareResults(expectedErrors, results);
+}
+
+TEST_F(IDEGObjAnalysisTest, NarrowingTestStruct_02) {
+  Initialize({pathToLLFiles + "invalid-narrowing-cast-2_c_dbg.ll",
+        pathToLLFiles + "viewer-file_c_dbg.ll",
+        pathToLLFiles + "viewer-pink_c_dbg.ll"});
+  SolverT llvmgobjsolver(*Problem, true, true);
   llvmgobjsolver.solve();
 
   auto results = Problem->collectErrors(llvmgobjsolver);

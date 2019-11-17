@@ -1,5 +1,7 @@
 set(gobj_files
   invalid-narrowing-cast.c
+  invalid-narrowing-cast-1.c
+  invalid-narrowing-cast-2.c
   viewer-pink.c
   viewer-file.c
 )
