@@ -125,7 +125,7 @@ GObjAnalysis::getNormalFlowFunction(GObjAnalysis::n_t curr,
 
 shared_ptr<FlowFunction<GObjAnalysis::d_t>>
 GObjAnalysis::getCallFlowFunction(GObjAnalysis::n_t callStmt,
-                                       GObjAnalysis::m_t destMthd) {
+                                  GObjAnalysis::m_t destMthd) {
   auto &lg = lg::get();
   LOG_IF_ENABLE(BOOST_LOG_SEV(lg, DEBUG)
                 << "GObjAnalysis::getCallFlowFunction()");
@@ -449,7 +449,8 @@ GObjAnalysis::getSummaryEdgeFunction(GObjAnalysis::n_t callSite,
   if (!Call.getCalledFunction())
     return EdgeIdentity<GObjAnalysis::v_t>::getInstance();
 
-  if (GObjTypeGraph::isGetTypeFunction(Call.getCalledFunction())) {
+  if (GObjTypeGraph::isGetTypeFunction(Call.getCalledFunction()) &&
+      isZeroValue(callNode) && retSiteNode == callSite) {
     auto TypeName = GObjTypeGraph::extractTypeName(Call.getCalledFunction());
     auto TypeBV = TypeInfo.getBitVectorForTypeName(TypeName);
     return make_shared<GenTypeEdgeFunction>(TypeBV);
@@ -513,5 +514,8 @@ void GObjAnalysis::printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t>
   }
 
   os << "---- End of GObj type analysis results-----\n";
+
+  // dump the PTG here
+  icfg.getWholeModulePTG().printAsDot("ptg.dot");
 }
 } // namespace prs

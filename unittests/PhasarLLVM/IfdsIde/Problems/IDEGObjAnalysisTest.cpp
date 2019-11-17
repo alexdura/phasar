@@ -5,6 +5,7 @@
 #include <phasar/PhasarLLVM/IfdsIde/Solver/LLVMIDESolver.h>
 #include <phasar/PhasarLLVM/Passes/ValueAnnotationPass.h>
 #include <phasar/PhasarLLVM/Pointer/LLVMTypeHierarchy.h>
+#include <phasar/Utils/Logger.h>
 
 using namespace psr;
 
@@ -95,6 +96,7 @@ TEST_F(IDEGObjAnalysisTest, NarrowingTestBasic_01) {
 }
 
 TEST_F(IDEGObjAnalysisTest, NarrowingTestStruct_02) {
+  // initializeLogger(true);
   Initialize({pathToLLFiles + "invalid-narrowing-cast-2_c_dbg.ll",
         pathToLLFiles + "viewer-file_c_dbg.ll",
         pathToLLFiles + "viewer-pink_c_dbg.ll"});
