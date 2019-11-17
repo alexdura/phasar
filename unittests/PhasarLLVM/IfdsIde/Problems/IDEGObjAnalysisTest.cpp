@@ -104,7 +104,7 @@ TEST_F(IDEGObjAnalysisTest, NarrowingTestStruct_02) {
   auto results = Problem->collectErrors(llvmgobjsolver);
 
   const std::vector<ExpectedErrorT> expectedErrors = {
-    {GObjAnalysis::Error::NARROWING_CAST, 12, 38, "viewer_file", "viewer_pink"}
+    {GObjAnalysis::Error::NARROWING_CAST, 17, 38, "viewer_file", "viewer_pink"}
   };
 
   compareResults(expectedErrors, results);

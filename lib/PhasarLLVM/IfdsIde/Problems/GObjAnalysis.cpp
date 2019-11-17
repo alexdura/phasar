@@ -60,27 +60,31 @@ GObjAnalysis::getNormalFlowFunction(GObjAnalysis::n_t curr,
   // If a tainted value is stored, the store location must be tainted too
   if (auto Store = llvm::dyn_cast<llvm::StoreInst>(curr)) {
     // TAFF probably stands for "Taint Analysis Flow Function"
-    struct TAFF : FlowFunction<GObjAnalysis::d_t> {
-      const llvm::StoreInst *store;
-      TAFF(const llvm::StoreInst *s) : store(s){};
+    auto *Ptr = Store->getPointerOperand();
+    std::set<const llvm::Value*> AliasedPtrs = icfg.getWholeModulePTG().getPointsToSet(Ptr);
+    AliasedPtrs.insert(Ptr);
+
+    struct StoreTF : FlowFunction<GObjAnalysis::d_t> {
+      d_t Data, Ptr;
+      std::set<d_t> AliasSet;
+      StoreTF(d_t Data, d_t Ptr, std::set<d_t> &&AliasSet) :
+        Data(Data), Ptr(Ptr), AliasSet(AliasSet) {}
       set<GObjAnalysis::d_t>
-      computeTargets(GObjAnalysis::d_t source) override {
-	// If the variable we are looking at the
-	// variable to be stored
-        if (store->getValueOperand() == source) {
-	  // The source flows into the target pointer.
-          return set<GObjAnalysis::d_t>{store->getPointerOperand(),
-                                            source};
-        } else if (store->getValueOperand() != source &&
-                   store->getPointerOperand() == source) {
-	  // If we are erasing the value, we cut
+      computeTargets(d_t source) override {
+        if (Data == source) {
+          // if the Data is holding a GObj, then all locations
+          // that alias the pointer operand may hold a GObj
+          return AliasSet;
+        } else if (Data != source &&
+                   Ptr == source) {
+          // If we are erasing the value, we cut
           return {};
         } else {
           return {source};
         }
       }
     };
-    return make_shared<TAFF>(Store);
+    return make_shared<StoreTF>(Store->getValueOperand(), Ptr, std::move(AliasedPtrs));
   }
   // If a tainted value is loaded, the loaded value is of course tainted
   if (auto Load = llvm::dyn_cast<llvm::LoadInst>(curr)) {
