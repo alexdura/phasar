@@ -125,12 +125,28 @@ TEST_F(IDEGObjAnalysisTest, NarrowingTestStruct_02) {
   const std::vector<ExpectedErrorT> expectedErrors = {
     {GObjAnalysis::Error::NARROWING_CAST, 18, 38, "viewer_file", "viewer_pink"},
     {GObjAnalysis::Error::NARROWING_CAST, 20, 34, "viewer_file", "viewer_pink"}
-
   };
 
   compareResults(expectedErrors, results);
 }
 
+
+TEST_F(IDEGObjAnalysisTest, IncompatibleCast_01) {
+  Initialize({pathToLLFiles + "incompatible-cast-1_c_m2r_dbg.ll",
+        pathToLLFiles + "viewer-file_c_m2r_dbg.ll",
+        pathToLLFiles + "viewer-pink_c_m2r_dbg.ll",
+        pathToLLFiles + "viewer-green_c_m2r_dbg.ll"});
+  SolverT llvmgobjsolver(*Problem, true, true);
+  llvmgobjsolver.solve();
+
+  auto results = Problem->collectErrors(llvmgobjsolver);
+
+  const std::vector<ExpectedErrorT> expectedErrors = {
+    {GObjAnalysis::Error::INCOMPATIBLE_CAST, 12, 38, "viewer_green", "viewer_pink"},
+  };
+
+  compareResults(expectedErrors, results);
+}
 
 // main function for the test case
 int main(int argc, char **argv) {

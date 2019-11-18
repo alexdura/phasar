@@ -2,8 +2,10 @@ set(gobj_files
   invalid-narrowing-cast.c
   invalid-narrowing-cast-1.c
   invalid-narrowing-cast-2.c
+  incompatible-cast-1.c
   viewer-pink.c
   viewer-file.c
+  viewer-green.c
 )
 
 foreach(TEST_SRC ${gobj_files})

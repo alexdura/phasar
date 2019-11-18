@@ -498,7 +498,7 @@ void GObjAnalysis::printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t>
   for (auto &err : collectErrors(SR)) {
     os << "ERROR at " << llvmValueToSrc(std::get<1>(err), false) << "\n";
     switch (std::get<0>(err)) {
-    case Error::INVALID_CAST:
+    case Error::INCOMPATIBLE_CAST:
       os << "\tInvalid cast ";
       break;
     case Error::NARROWING_CAST:

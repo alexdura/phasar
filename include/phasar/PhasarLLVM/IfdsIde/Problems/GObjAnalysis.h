@@ -158,8 +158,8 @@ public:
   void printValue(std::ostream &os, v_t v) const override;
 
   enum class Error {
-    NARROWING_CAST,
-    INVALID_CAST
+    NARROWING_CAST, // a cast from an object of type T to an object of type U, where U <: T
+    INCOMPATIBLE_CAST // a cast between two types T and U such that (not (U <: T or T <: U)) (i.e. unrelated types).
   };
 
   using ErrorEntryT = std::tuple<Error, const llvm::Value*, std::string, std::string>;
@@ -195,7 +195,7 @@ public:
                                  toType));
             } else if (!TypeInfo.isWideningCast(fromType, toType)) {
               errors.push_back(make_tuple(
-                                 Error::INVALID_CAST,
+                                 Error::INCOMPATIBLE_CAST,
                                  res.first,
                                  fromType,
                                  toType));
