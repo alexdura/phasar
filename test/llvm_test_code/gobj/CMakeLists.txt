@@ -3,6 +3,7 @@ set(gobj_files
   invalid-narrowing-cast-1.c
   invalid-narrowing-cast-2.c
   incompatible-cast-1.c
+  invalid-bitcast-1.c
   viewer-pink.c
   viewer-file.c
   viewer-green.c
