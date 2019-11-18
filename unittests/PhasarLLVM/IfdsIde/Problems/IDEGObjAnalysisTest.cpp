@@ -80,9 +80,9 @@ protected:
 
 /* ============== BASIC TESTS ============== */
 TEST_F(IDEGObjAnalysisTest, NarrowingTestBasic_01) {
-  Initialize({pathToLLFiles + "invalid-narrowing-cast_c_dbg.ll",
-        pathToLLFiles + "viewer-file_c_dbg.ll",
-        pathToLLFiles + "viewer-pink_c_dbg.ll"});
+  Initialize({pathToLLFiles + "invalid-narrowing-cast_c_m2r_dbg.ll",
+        pathToLLFiles + "viewer-file_c_m2r_dbg.ll",
+        pathToLLFiles + "viewer-pink_c_m2r_dbg.ll"});
   SolverT llvmgobjsolver(*Problem, false, true);
   llvmgobjsolver.solve();
 
@@ -95,18 +95,37 @@ TEST_F(IDEGObjAnalysisTest, NarrowingTestBasic_01) {
   compareResults(expectedErrors, results);
 }
 
-TEST_F(IDEGObjAnalysisTest, NarrowingTestStruct_02) {
+TEST_F(IDEGObjAnalysisTest, NarrowingTestStruct_01) {
   // initializeLogger(true);
-  Initialize({pathToLLFiles + "invalid-narrowing-cast-2_c_dbg.ll",
-        pathToLLFiles + "viewer-file_c_dbg.ll",
-        pathToLLFiles + "viewer-pink_c_dbg.ll"});
+  Initialize({pathToLLFiles + "invalid-narrowing-cast-1_c_m2r_dbg.ll",
+        pathToLLFiles + "viewer-file_c_m2r_dbg.ll",
+        pathToLLFiles + "viewer-pink_c_m2r_dbg.ll"});
   SolverT llvmgobjsolver(*Problem, true, true);
   llvmgobjsolver.solve();
 
   auto results = Problem->collectErrors(llvmgobjsolver);
 
   const std::vector<ExpectedErrorT> expectedErrors = {
-    {GObjAnalysis::Error::NARROWING_CAST, 17, 38, "viewer_file", "viewer_pink"}
+    {GObjAnalysis::Error::NARROWING_CAST, 22, 31, "viewer_file", "viewer_pink"}
+  };
+
+  compareResults(expectedErrors, results);
+}
+
+TEST_F(IDEGObjAnalysisTest, NarrowingTestStruct_02) {
+  // initializeLogger(true);
+  Initialize({pathToLLFiles + "invalid-narrowing-cast-2_c_m2r_dbg.ll",
+        pathToLLFiles + "viewer-file_c_m2r_dbg.ll",
+        pathToLLFiles + "viewer-pink_c_m2r_dbg.ll"});
+  SolverT llvmgobjsolver(*Problem, true, true);
+  llvmgobjsolver.solve();
+
+  auto results = Problem->collectErrors(llvmgobjsolver);
+
+  const std::vector<ExpectedErrorT> expectedErrors = {
+    {GObjAnalysis::Error::NARROWING_CAST, 18, 38, "viewer_file", "viewer_pink"},
+    {GObjAnalysis::Error::NARROWING_CAST, 20, 34, "viewer_file", "viewer_pink"}
+
   };
 
   compareResults(expectedErrors, results);

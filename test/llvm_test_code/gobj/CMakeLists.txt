@@ -7,5 +7,5 @@ set(gobj_files
 )
 
 foreach(TEST_SRC ${gobj_files})
-  generate_ll_file(FILE ${TEST_SRC} DEBUG INCLUDE ${CMAKE_CURRENT_SOURCE_DIR})
+  generate_ll_file(FILE ${TEST_SRC} DEBUG MEM2REG INCLUDE ${CMAKE_CURRENT_SOURCE_DIR})
 endforeach(TEST_SRC)
