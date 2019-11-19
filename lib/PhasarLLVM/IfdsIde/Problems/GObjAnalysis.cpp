@@ -274,7 +274,33 @@ bool GObjAnalysis::isZeroValue(GObjAnalysis::d_t d) const {
   return LLVMZeroValue::getInstance()->isLLVMZeroValue(d);
 }
 
+template<typename T>
+class EdgeFunctionFactory {
+  std::map<GObjAnalysis::v_t, std::shared_ptr<T>> edgeFunctionCache;
 
+  EdgeFunctionFactory() = default;
+  EdgeFunctionFactory(EdgeFunctionFactory&) = delete;
+  EdgeFunctionFactory(EdgeFunctionFactory&&) = delete;
+
+public:
+  static EdgeFunctionFactory& getInstance() {
+    static EdgeFunctionFactory<T> factory;
+    return factory;
+  }
+
+  std::shared_ptr<T> makeEdgeFunction(GObjAnalysis::v_t bv) {
+    typename
+    std::map<GObjAnalysis::v_t, std::shared_ptr<T>>::iterator it = edgeFunctionCache.find(bv);
+    if (it == edgeFunctionCache.end()) {
+      auto newit = edgeFunctionCache.emplace(std::make_pair(bv, std::make_shared<T>(bv)));
+      it = newit.first;
+      if (edgeFunctionCache.size() % 100 == 0 && edgeFunctionCache.size() != 0) {
+        llvm::dbgs() << "Edge function [" << typeid(T).name() << "] cache size " << edgeFunctionCache.size() << "\n";
+      }
+    }
+    return it->second;
+  }
+};
 
 class MergeTypeEdgeFunction : public EdgeFunction<GObjAnalysis::v_t>,
                               public std::enable_shared_from_this<MergeTypeEdgeFunction> {
@@ -282,7 +308,7 @@ class MergeTypeEdgeFunction : public EdgeFunction<GObjAnalysis::v_t>,
   v_t TypeBitVector;
   friend class GenTypeEdgeFunction;
 public:
-  MergeTypeEdgeFunction(llvm::SmallBitVector TypeBitVector) : TypeBitVector(TypeBitVector) {}
+  MergeTypeEdgeFunction(GObjAnalysis::v_t TypeBitVector) : TypeBitVector(TypeBitVector) {}
 
   v_t computeTarget(v_t source) override {
     return TypeBitVector | source;
@@ -300,7 +326,8 @@ public:
       if (equal_to(secondFunction))
         return shared_from_this();
 
-      return make_shared<MergeTypeEdgeFunction>(GT->TypeBitVector | TypeBitVector);
+      return EdgeFunctionFactory<MergeTypeEdgeFunction>::getInstance()
+        .makeEdgeFunction(GT->TypeBitVector | TypeBitVector);
     }
 
     // a this point, the other type should be a GenTypeEdgeFunction
@@ -319,7 +346,8 @@ public:
       if (equal_to(otherFunction))
         return shared_from_this();
 
-      return make_shared<MergeTypeEdgeFunction>(GT->TypeBitVector | TypeBitVector);
+      return EdgeFunctionFactory<MergeTypeEdgeFunction>::getInstance()
+        .makeEdgeFunction(GT->TypeBitVector | TypeBitVector);
     }
 
     // a this point, the other type should be a GenTypeEdgeFunction
@@ -347,7 +375,7 @@ class GenTypeEdgeFunction : public EdgeFunction<GObjAnalysis::v_t>,
   using v_t = GObjAnalysis::v_t;
   v_t TypeBitVector;
 public:
-  GenTypeEdgeFunction(llvm::SmallBitVector TypeBitVector) : TypeBitVector(TypeBitVector) {}
+  GenTypeEdgeFunction(GObjAnalysis::v_t TypeBitVector) : TypeBitVector(TypeBitVector) {}
   v_t computeTarget(v_t source) override {
     return TypeBitVector;
   }
@@ -363,10 +391,12 @@ public:
           otherFunction.get())) {
       // If this is eventually reached, a constant function returning BOTTOM is a good option
       return make_shared<MergeTypeEdgeFunction>(TypeBitVector);
+
     }
 
     if (auto *MT = dynamic_cast<MergeTypeEdgeFunction *>(otherFunction.get())) {
-      return make_shared<MergeTypeEdgeFunction>(MT->TypeBitVector | TypeBitVector);
+      return EdgeFunctionFactory<GenTypeEdgeFunction>::getInstance()
+        .makeEdgeFunction(MT->TypeBitVector | TypeBitVector);
     }
 
     // If the functions are equal, just return one of them
@@ -376,7 +406,8 @@ public:
     // Otherwise, return a constant function that maps its input to the union of the type sets
     auto *GT = dynamic_cast<GenTypeEdgeFunction *>(otherFunction.get());
     v_t joinedType = GT->TypeBitVector | TypeBitVector;
-    return make_shared<GenTypeEdgeFunction>(joinedType);
+    return EdgeFunctionFactory<GenTypeEdgeFunction>::getInstance()
+      .makeEdgeFunction(joinedType);
   }
 
   bool equal_to(std::shared_ptr<EdgeFunction<v_t>> otherFunction) const override {
@@ -400,7 +431,6 @@ GObjAnalysis::getNormalEdgeFunction(GObjAnalysis::n_t curr,
                                         GObjAnalysis::d_t currNode,
                                         GObjAnalysis::n_t succ,
                                         GObjAnalysis::d_t succNode) {
-  cout << "GObjAnalysis::getNormalEdgeFunction()\n";
   // if (isZeroValue(currNode) && isZeroValue(succNode)) {
   //   return make_shared<GenTypeEdgeFunction>(topElement());
   // }
@@ -412,7 +442,6 @@ GObjAnalysis::getCallEdgeFunction(GObjAnalysis::n_t callStmt,
                                       GObjAnalysis::d_t srcNode,
                                       GObjAnalysis::m_t destinationMethod,
                                       GObjAnalysis::d_t destNode) {
-  cout << "GObjAnalysis::getCallEdgeFunction()\n";
   return EdgeIdentity<GObjAnalysis::v_t>::getInstance();
 }
 
@@ -423,7 +452,6 @@ GObjAnalysis::getReturnEdgeFunction(GObjAnalysis::n_t callSite,
                                         GObjAnalysis::d_t exitNode,
                                         GObjAnalysis::n_t reSite,
                                         GObjAnalysis::d_t retNode) {
-  cout << "GObjAnalysis::getReturnEdgeFunction()\n";
   return EdgeIdentity<GObjAnalysis::v_t>::getInstance();
 }
 
@@ -433,7 +461,6 @@ GObjAnalysis::getCallToRetEdgeFunction(GObjAnalysis::n_t callSite,
                                            GObjAnalysis::n_t retSite,
                                            GObjAnalysis::d_t retSiteNode,
                                            set<GObjAnalysis::m_t> callees) {
-  cout << "GObjAnalysis::getCallToRetEdgeFunction()\n";
   return EdgeIdentity<GObjAnalysis::v_t>::getInstance();
 }
 
@@ -442,8 +469,6 @@ GObjAnalysis::getSummaryEdgeFunction(GObjAnalysis::n_t callSite,
                                          GObjAnalysis::d_t callNode,
                                          GObjAnalysis::n_t retSite,
                                          GObjAnalysis::d_t retSiteNode) {
-  cout << "GObjAnalysis::getSummaryEdgeFunction()\n";
-
   llvm::ImmutableCallSite Call(callSite);
 
   if (!Call.getCalledFunction())
@@ -461,13 +486,11 @@ GObjAnalysis::getSummaryEdgeFunction(GObjAnalysis::n_t callSite,
 
 GObjAnalysis::v_t GObjAnalysis::join(GObjAnalysis::v_t lhs,
                                      GObjAnalysis::v_t rhs) {
-  cout << "GObjAnalysis::join()\n";
   return lhs | rhs;
 }
 
 shared_ptr<EdgeFunction<GObjAnalysis::v_t>>
 GObjAnalysis::allTopFunction() {
-  cout << "GObjAnalysis::allTopFunction()\n";
   return make_shared<GenTypeEdgeFunction>(topElement());
 }
 
