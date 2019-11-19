@@ -2,6 +2,7 @@
 #include <phasar/DB/ProjectIRDB.h>
 #include <phasar/PhasarLLVM/ControlFlow/LLVMBasedICFG.h>
 #include <phasar/PhasarLLVM/IfdsIde/Problems/GObjAnalysis.h>
+#include <phasar/PhasarLLVM/IfdsIde/GObjAnalysis/FastBitVector.h>
 #include <phasar/PhasarLLVM/IfdsIde/Solver/LLVMIDESolver.h>
 #include <phasar/PhasarLLVM/Passes/ValueAnnotationPass.h>
 #include <phasar/PhasarLLVM/Pointer/LLVMTypeHierarchy.h>
@@ -77,6 +78,53 @@ protected:
     }
   }
 }; // Test Fixture
+
+TEST(FastBitVector, FastBitVector_01) {
+  FastBitVector b, c(true);
+  EXPECT_EQ((b | c), c);
+
+  b.set(10);
+  b.set(45);
+  EXPECT_TRUE(b.get(10));
+  EXPECT_TRUE(b.get(45));
+  EXPECT_FALSE(b.get(9) || b.get(11));
+  EXPECT_FALSE(b.get(46) || b.get(44));
+  b.set(10, false);
+  EXPECT_FALSE(b.get(10));
+  b.set(45, false);
+  EXPECT_FALSE(b.get(45));
+  EXPECT_EQ(b, FastBitVector());
+}
+
+TEST(FastBitVector, FastBitVector_02) {
+  FastBitVector b, c;
+  b.set(10);
+  b.set(0);
+  b.set(127);
+
+  c.set(10);
+  c.set(0);
+  c.set(127);
+
+  EXPECT_EQ(b, c);
+  c.set(10, false);
+  EXPECT_LT(c,  b);
+  b.set(127, false);
+  EXPECT_LT(b, c);
+}
+
+TEST(FastBitVector, FastBitVector_03) {
+  FastBitVector b, c;
+  b.set(63);
+  b.set(64);
+  b.set(65);
+  EXPECT_EQ(b.find_first(), 63);
+  EXPECT_EQ(b.find_next(63), 64);
+  EXPECT_EQ(b.find_next(64), 65);
+  EXPECT_EQ(b.find_next(65), -1);
+  EXPECT_EQ(c.find_first(), -1);
+}
+
 
 /* ============== BASIC TESTS ============== */
 TEST_F(IDEGObjAnalysisTest, NarrowingTestBasic_01) {

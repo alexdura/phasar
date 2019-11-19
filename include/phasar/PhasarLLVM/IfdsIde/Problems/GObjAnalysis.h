@@ -16,8 +16,8 @@
 #include <phasar/PhasarLLVM/IfdsIde/LLVMDefaultIDETabulationProblem.h>
 #include <phasar/PhasarLLVM/Utils/TaintConfiguration.h>
 #include <phasar/PhasarLLVM/IfdsIde/GObjAnalysis/GObjTypeSystem.h>
-#include <phasar/PhasarLLVM/ControlFlow/LLVMBasedICFG.h>
-#include <llvm/ADT/BitVector.h>
+#include <phasar/PhasarLLVM/IfdsIde/GObjAnalysis/FastBitVector.h>
+#include <llvm/ADT/SmallBitVector.h>
 #include <set>
 #include <string>
 #include <vector>
@@ -46,15 +46,18 @@ class LLVMBasedICFG;
  * @see TaintConfiguration on how to specify your own
  * taint-sensitive source and sink functions.
  */
+
+using BitVectorT = FastBitVector<2>; //llvm::SmallBitVector;
+
 class GObjAnalysis
     : public LLVMDefaultIDETabulationProblem<const llvm::Value *,
-                                             llvm::SmallBitVector,
+                                             BitVectorT,
                                              LLVMBasedICFG &> {
 public:
   typedef const llvm::Value *d_t;
   typedef const llvm::Instruction *n_t;
   typedef const llvm::Function *m_t;
-  typedef llvm::SmallBitVector v_t;
+  typedef BitVectorT v_t;
   typedef LLVMBasedICFG &i_t;
 
 private:
@@ -134,12 +137,12 @@ public:
 
   v_t topElement() override {
     // all zeros
-    return llvm::SmallBitVector(TypeInfo.getNumTypes(), false);
+    return v_t(TypeInfo.getNumTypes(), false);
   }
 
   v_t bottomElement() override {
     // all ones, this can be any type
-    return llvm::SmallBitVector(TypeInfo.getNumTypes(), true);
+    return v_t(TypeInfo.getNumTypes(), true);
   }
 
   v_t join(v_t lhs, v_t rhs) override;
@@ -209,7 +212,6 @@ public:
 };
 } // namespace psr
 
-
 namespace llvm {
 bool operator<(const llvm::SmallBitVector& left, const llvm::SmallBitVector& right) {
   for (int i = left.find_first(), j = right.find_first(); ; i = left.find_next(i), j = right.find_next(j)) {
@@ -219,5 +221,6 @@ bool operator<(const llvm::SmallBitVector& left, const llvm::SmallBitVector& rig
   return false;
 }
 }
+
 
 #endif

@@ -12,10 +12,13 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/ADT/SmallBitVector.h>
+#include <phasar/PhasarLLVM/IfdsIde/GObjAnalysis/FastBitVector.h>
 
 namespace psr {
 
 class GObjTypeGraph {
+  using BitVectorT = FastBitVector<2>;
+
   const std::set<llvm::Module *> &Modules;
   const char* TOP_LEVEL_TYPE = "object";
   const char* INTERFACE_TYPE = "interface";
@@ -35,7 +38,7 @@ class GObjTypeGraph {
   std::map<std::string, llvm::Value*> TypeValueMap;
   std::unordered_set<const llvm::Value*> TypeValues;
 
-  std::unordered_map<std::string, llvm::SmallBitVector> TypeToBitVectorMap;
+  std::unordered_map<std::string, BitVectorT> TypeToBitVectorMap;
   std::unordered_map<unsigned, std::string> TypeIdToTypeMap;
 
   llvm::LLVMContext TypeValueContext;
@@ -97,7 +100,7 @@ class GObjTypeGraph {
   void initializeMaps() {
     unsigned i = 0;
     for (auto &tp : SuperClassMap) {
-      llvm::SmallBitVector bv(getNumTypes(), false);
+      BitVectorT bv(getNumTypes(), false);
       bv.set(i);
       TypeToBitVectorMap[tp.first] = bv;
       TypeIdToTypeMap[i] = tp.first;
@@ -119,7 +122,7 @@ public:
     for (auto &p : SuperClassMap) {
       auto it = TypeToBitVectorMap.find(p.first);
       assert(it != TypeToBitVectorMap.end());
-      llvm::dbgs() << "[" << it->second.find_last() << "] "
+      llvm::dbgs() << "[" << it->second.find_first() << "] "
                    << p.first << " -> " << p.second << "\n";
     }
   }
@@ -129,7 +132,7 @@ public:
   }
 
   // type name -> BitVector mapping, used by IDE transfer functions
-  llvm::SmallBitVector getBitVectorForTypeName(const std::string &name) const {
+  BitVectorT getBitVectorForTypeName(const std::string &name) const {
     auto it = TypeToBitVectorMap.find(name);
     assert(it != TypeToBitVectorMap.end() && "Name missing from the type database");
     return it->second;

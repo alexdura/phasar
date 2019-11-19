@@ -12,7 +12,6 @@
 #include <llvm/IR/Value.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/Debug.h>
-#include <llvm/ADT/SmallBitVector.h>
 
 #include <phasar/PhasarLLVM/ControlFlow/LLVMBasedICFG.h>
 #include <phasar/PhasarLLVM/IfdsIde/FlowFunction.h>
@@ -289,6 +288,7 @@ public:
   }
 
   std::shared_ptr<T> makeEdgeFunction(GObjAnalysis::v_t bv) {
+#if 1 // set to 0 to disable caching
     typename
     std::map<GObjAnalysis::v_t, std::shared_ptr<T>>::iterator it = edgeFunctionCache.find(bv);
     if (it == edgeFunctionCache.end()) {
@@ -299,6 +299,10 @@ public:
       }
     }
     return it->second;
+#else
+    return std::make_shared<T>(bv);
+#endif
+
   }
 };
 
@@ -395,7 +399,7 @@ public:
     }
 
     if (auto *MT = dynamic_cast<MergeTypeEdgeFunction *>(otherFunction.get())) {
-      return EdgeFunctionFactory<GenTypeEdgeFunction>::getInstance()
+      return EdgeFunctionFactory<MergeTypeEdgeFunction>::getInstance()
         .makeEdgeFunction(MT->TypeBitVector | TypeBitVector);
     }
 
