@@ -18,6 +18,11 @@ namespace psr {
 class GObjTypeGraph {
   const std::set<llvm::Module *> &Modules;
   const char* TOP_LEVEL_TYPE = "object";
+  const char* INTERFACE_TYPE = "interface";
+  const char* ENUM_TYPE = "enum";
+  const char* FLAG_TYPE = "flag";
+  const char* BOXED_TYPE = "boxed";
+  const char* G_TYPE_INITIALLY_UNOWNED = "g_initially_unowned";
 
   // A map mapping subclasses to their superclass.
   std::map<std::string, std::string> SuperClassMap;
@@ -37,6 +42,55 @@ class GObjTypeGraph {
   llvm::Module TypeValueModule;
 
   std::map<std::string, std::set<std::string>> SubTypeMap, SuperTypeMap;
+
+  void addBuiltinTypes() {
+    // Object is the supertype of all class types.
+    SuperClassMap[TOP_LEVEL_TYPE] = TOP_LEVEL_TYPE;
+    // Interface is the supertype of all interfaces;
+    // In GObject, the interface hierachy is flat, all interfaces
+    // being direct subtypes of 'Interface'.
+    SuperClassMap[INTERFACE_TYPE] = INTERFACE_TYPE;
+    // Special type of objects
+    SuperClassMap[G_TYPE_INITIALLY_UNOWNED] = TOP_LEVEL_TYPE;
+    // Enum types
+    SuperClassMap[ENUM_TYPE] = ENUM_TYPE;
+    // Flag types (i.e. enum types where the enum elements are powers of 2)
+    SuperClassMap[FLAG_TYPE] = FLAG_TYPE;
+    // C-types (i.e. no inheritance)
+    SuperClassMap[BOXED_TYPE] = BOXED_TYPE;
+    // Other built-in types
+    const char *gobjBuiltinTypes[] = {
+      "g_hash_table",
+      "g_date",
+      "g_gstring",
+      "g_strv",
+      "g_regex",
+      "g_match_info",
+      "g_array",
+      "g_byte_array",
+      "g_ptr_array",
+      "g_bytes",
+      "g_variant_type",
+      "g_error",
+      "g_date_time",
+      "g_time_zone",
+      "g_io_channel",
+      "g_io_condition",
+      "g_variant_builder",
+      "g_variant_dict",
+      "g_key_file",
+      "g_main_context",
+      "g_main_loop",
+      "g_mapped_file",
+      "g_markup_parse_context",
+      "g_source",
+      "g_pollfd",
+      "g_thread",
+      "g_option_group"};
+    for (unsigned i = 0; i < llvm::array_lengthof(gobjBuiltinTypes); ++i) {
+      SuperClassMap[gobjBuiltinTypes[i]] = gobjBuiltinTypes[i];
+    }
+  }
 
   void buildTypeGraph();
 

@@ -437,9 +437,7 @@ void IFDSGObjAnalysis::printIFDSReport(
 void GObjTypeGraph::buildTypeGraph() {
   using namespace llvm;
 
-  // Object is the supertype of all types.
-  SuperClassMap["object"] = "object";
-
+  addBuiltinTypes();
   // To get the type
   for (const Module *M : Modules) {
     for (const Function &F : M->getFunctionList()) {
@@ -459,8 +457,19 @@ void GObjTypeGraph::buildTypeGraph() {
 
           const Function *calledFunc = callSite.getCalledFunction();
           if (!calledFunc) {
-            continue;
+            // this might be a constant bitcast expression:
+            // call i64 bitcast (i64 (i64, i8*, %struct._GTypeInfo*, i32)* @g_type_register_static to
+            //                   i64 (i64, i8*, %struct._GTypeInfo.127*, i32)*)
+            //                  (i64 %18, i8* getelementptr inbounds ([11 x i8], [11 x i8]* @.str.1001, i32 0, i32 0),
+            //                             %struct._GTypeInfo.127* @gst_element_get_type.element_info, i32 16)
+            const Value *calledValue = callSite.getCalledValue();
+            auto *CE = dyn_cast<ConstantExpr>(calledValue);
+            if (CE && CE->isCast())
+              calledFunc = dyn_cast<Function>(CE->getOperand(0));
           }
+
+          if (!calledFunc)
+            continue;
 
           name.consume_back("_once");
           name.consume_back("_get_type");
@@ -480,8 +489,11 @@ void GObjTypeGraph::buildTypeGraph() {
             if (const ConstantInt *IC = dyn_cast<ConstantInt>(arg0)) {
               if (IC->getZExtValue() == 80 /* type id of GObject, by convention */) {
                 SuperClassMap[subTypeName] = TOP_LEVEL_TYPE;
+              }
+              else if (IC->getZExtValue() == 8 /* type if of Interface, by convention */) {
+                SuperClassMap[subTypeName] = INTERFACE_TYPE;
               } else {
-                dbgs() << "Unknown type id: " << *IC << "\n";
+                dbgs() << "Unknown supertype id " << *IC << " for type " <<  subTypeName << "\n";
               }
             } else if (const CallInst *C = dyn_cast<CallInst>(arg0)) {
               // Here, we are in the case where the type ID was set with
@@ -497,6 +509,12 @@ void GObjTypeGraph::buildTypeGraph() {
                 dbgs() << "Unknown type id: " << *C << "\n";
               }
             }
+          } else if (calleeName.equals("g_flags_register_static")) {
+            SuperClassMap[subTypeName] = FLAG_TYPE;
+          } else if (calleeName.equals("g_enum_register_static")) {
+            SuperClassMap[subTypeName] = ENUM_TYPE;
+          } else if (calleeName.equals("g_boxed_type_register_static")) {
+            SuperClassMap[subTypeName] = BOXED_TYPE;
           }
         }
       }
