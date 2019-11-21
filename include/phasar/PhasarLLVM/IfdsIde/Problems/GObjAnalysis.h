@@ -47,17 +47,15 @@ class LLVMBasedICFG;
  * taint-sensitive source and sink functions.
  */
 
-using BitVectorT = FastBitVector<2>; //llvm::SmallBitVector;
-
 class GObjAnalysis
     : public LLVMDefaultIDETabulationProblem<const llvm::Value *,
-                                             BitVectorT,
+                                             GObjTypeGraph::BitVectorT,
                                              LLVMBasedICFG &> {
 public:
   typedef const llvm::Value *d_t;
   typedef const llvm::Instruction *n_t;
   typedef const llvm::Function *m_t;
-  typedef BitVectorT v_t;
+  typedef GObjTypeGraph::BitVectorT v_t;
   typedef LLVMBasedICFG &i_t;
 
 private:

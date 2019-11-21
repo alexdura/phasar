@@ -287,12 +287,12 @@ public:
     return factory;
   }
 
-  std::shared_ptr<T> makeEdgeFunction(GObjAnalysis::v_t bv) {
+  std::shared_ptr<T> makeEdgeFunction(const GObjAnalysis::v_t &bv) {
 #if 1 // set to 0 to disable caching
     typename
     std::map<GObjAnalysis::v_t, std::shared_ptr<T>>::iterator it = edgeFunctionCache.find(bv);
     if (it == edgeFunctionCache.end()) {
-      auto newit = edgeFunctionCache.emplace(std::make_pair(bv, std::make_shared<T>(bv)));
+      auto newit = edgeFunctionCache.emplace(bv, std::make_shared<T>(bv));
       it = newit.first;
       if (edgeFunctionCache.size() % 100 == 0 && edgeFunctionCache.size() != 0) {
         llvm::dbgs() << "Edge function [" << typeid(T).name() << "] cache size " << edgeFunctionCache.size() << "\n";

@@ -17,8 +17,10 @@
 namespace psr {
 
 class GObjTypeGraph {
-  using BitVectorT = FastBitVector<2>;
+public:
+  typedef FastBitVector<4> BitVectorT;
 
+private:
   const std::set<llvm::Module *> &Modules;
   const char* TOP_LEVEL_TYPE = "object";
   const char* INTERFACE_TYPE = "interface";

@@ -37,7 +37,8 @@ public:
   FastBitVector(const FastBitVector &other) = default;
 
   void set(int bit, bool v = true) {
-    assert (0 <= bit && bit < (int) (N * bitwidth));
+    assert(0 <= bit);
+    assert(bit < (int) (N * bitwidth));
     unsigned wordIndex = bit / bitwidth;
     unsigned i = bit % bitwidth;
     uint64_t &word = bv[wordIndex];
@@ -59,7 +60,8 @@ public:
   }
 
   int find_next(int i) const {
-    assert (0 <= i && i < (int) (N * bitwidth));
+    assert(0 <= i);
+    assert(i < (int) (N * bitwidth));
     unsigned wordIndex = i / bitwidth;
     unsigned j = i % bitwidth;
     if (j == bitwidth - 1)
