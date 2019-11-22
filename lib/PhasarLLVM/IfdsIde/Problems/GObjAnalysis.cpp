@@ -192,13 +192,13 @@ GObjAnalysis::getSummaryFlowFunction(GObjAnalysis::n_t callStmt,
 shared_ptr<FlowFunction<GObjAnalysis::d_t>>
 GObjAnalysis::provideSpecialSummaries(GObjAnalysis::n_t callStmt,
                                                GObjAnalysis::m_t destMthd) {
-  llvm::StringRef FunctionName = cxx_demangle(destMthd->getName().str());
+  string FunctionName = cxx_demangle(destMthd->getName().str());
 
   SpecialSummaries<GObjAnalysis::d_t> &specialSummaries =
       SpecialSummaries<GObjAnalysis::d_t>::getInstance();
 
   llvm::ImmutableCallSite Call(callStmt);
-  if (FunctionName.startswith("g_object_new")) {
+  if (llvm::StringRef(FunctionName).startswith("g_object_new")) {
     // for g_object_new, transfer the type from the first argument
     // to the return
     struct NewObjTAFF : FlowFunction<GObjAnalysis::d_t> {
@@ -312,7 +312,9 @@ class MergeTypeEdgeFunction : public EdgeFunction<GObjAnalysis::v_t>,
   v_t TypeBitVector;
   friend class GenTypeEdgeFunction;
 public:
-  MergeTypeEdgeFunction(GObjAnalysis::v_t TypeBitVector) : TypeBitVector(TypeBitVector) {}
+  MergeTypeEdgeFunction(GObjAnalysis::v_t TypeBitVector) : TypeBitVector(TypeBitVector) {
+    assert(!TypeBitVector.isAllZeros());
+  }
 
   v_t computeTarget(v_t source) override {
     return TypeBitVector | source;
@@ -393,9 +395,11 @@ public:
   joinWith(std::shared_ptr<EdgeFunction<v_t>> otherFunction) override {
     if (auto *EI = dynamic_cast<EdgeIdentity<v_t> *>(
           otherFunction.get())) {
-      // If this is eventually reached, a constant function returning BOTTOM is a good option
-      return make_shared<MergeTypeEdgeFunction>(TypeBitVector);
-
+      if (TypeBitVector.isAllZeros()) {
+        return EdgeIdentity<GObjAnalysis::v_t>::getInstance();
+      }
+      return EdgeFunctionFactory<MergeTypeEdgeFunction>::getInstance()
+        .makeEdgeFunction(TypeBitVector);
     }
 
     if (auto *MT = dynamic_cast<MergeTypeEdgeFunction *>(otherFunction.get())) {

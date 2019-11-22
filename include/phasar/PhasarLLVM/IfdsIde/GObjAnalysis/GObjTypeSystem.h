@@ -91,7 +91,8 @@ private:
       "g_source",
       "g_pollfd",
       "g_thread",
-      "g_option_group"};
+      "g_option_group",
+      "g_gtype"};
     for (unsigned i = 0; i < llvm::array_lengthof(gobjBuiltinTypes); ++i) {
       SuperClassMap[gobjBuiltinTypes[i]] = gobjBuiltinTypes[i];
     }
@@ -136,7 +137,11 @@ public:
   // type name -> BitVector mapping, used by IDE transfer functions
   BitVectorT getBitVectorForTypeName(const std::string &name) const {
     auto it = TypeToBitVectorMap.find(name);
-    assert(it != TypeToBitVectorMap.end() && "Name missing from the type database");
+    // assert(it != TypeToBitVectorMap.end() && "Name missing from the type database");
+    if (it == TypeToBitVectorMap.end()) {
+      llvm::dbgs() << ">>>>>>>> Missing type: " << name << "\n";
+      return BitVectorT(getNumTypes(), true);
+    }
     return it->second;
   }
 

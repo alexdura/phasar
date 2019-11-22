@@ -96,6 +96,13 @@ public:
     }
     return false;
   }
+
+  bool isAllZeros() const {
+    for (int i = 0; i < N; i++)
+      if (bv[i] != 0ull)
+        return false;
+    return true;
+  }
 };
 
 } // end namespace psr
