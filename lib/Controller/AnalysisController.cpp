@@ -227,7 +227,7 @@ AnalysisController::AnalysisController(
       case DataFlowAnalysisType::IDE_GObjAnalysis: {
         GObjAnalysis TaintAnalysisProblem(ICFG, CH, IRDB, EntryPoints);
         LLVMIDESolver<const llvm::Value *, GObjAnalysis::v_t, LLVMBasedICFG &> LLVMTaintSolver(
-          TaintAnalysisProblem, true, true);
+          TaintAnalysisProblem, false, true);
         cout << "IDE GObj Analysis ..." << endl;
         LLVMTaintSolver.solve();
         cout << "IDE GObj Analysis ended" << endl;
