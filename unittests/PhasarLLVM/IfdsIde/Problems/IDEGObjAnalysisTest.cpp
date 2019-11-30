@@ -63,9 +63,26 @@ protected:
     if (groundTruth.size() != results.size())
       return;
 
+    // The results reported by the analysis do not arrive in deterministic order.
+    // This is due how the ICFG iterates over functions. To fix this and avoid
+    // intermitent test failures, we sort them here.
+    std::vector<GObjAnalysis::ErrorEntryT> sortedResults(results);
+    std::sort(sortedResults.begin(), sortedResults.end(),
+              [](const GObjAnalysis::ErrorEntryT &e1, const GObjAnalysis::ErrorEntryT &e2) {
+                const llvm::Instruction *I1 = llvm::cast<llvm::Instruction>(get<1>(e1));
+                unsigned line1 = I1->getDebugLoc().getLine();
+                unsigned col1 = I1->getDebugLoc().getCol();
+                const llvm::Instruction *I2 = llvm::cast<llvm::Instruction>(get<1>(e2));
+                unsigned line2 = I2->getDebugLoc().getLine();
+                unsigned col2 = I2->getDebugLoc().getCol();
+                if (line1 != line2)
+                  return line1 < line2;
+                return col1 < col2;
+              });
+
     for (unsigned i = 0; i < groundTruth.size(); ++i) {
       auto &groundTruthEntry = groundTruth[i];
-      auto &resultsEntry = results[i];
+      auto &resultsEntry = sortedResults[i];
       // same class of error
       EXPECT_EQ(get<0>(groundTruthEntry), get<0>(resultsEntry)) << "Different error type.";
       const llvm::Instruction *I = llvm::cast<llvm::Instruction>(get<1>(resultsEntry));
