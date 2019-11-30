@@ -107,7 +107,7 @@ GObjAnalysis::getNormalFlowFunction(GObjAnalysis::n_t curr,
       BitCastTAFF(d_t Src, d_t Dst) : Src(Src), Dst(Dst) {}
       std::set<d_t> computeTargets(d_t source) override {
         if (source == Src) {
-          llvm::dbgs() << ">>> Bitcast of GObject " << *source << " at " << *Dst << "\n";
+          // llvm::dbgs() << ">>> Bitcast of GObject " << *source << " at " << *Dst << "\n";
           return {Src, Dst};
         } else if (source == Dst) {
           return {};
