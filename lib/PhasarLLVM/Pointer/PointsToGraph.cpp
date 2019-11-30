@@ -414,6 +414,7 @@ set<const llvm::Value *> PointsToGraph::getPointsToSet(const llvm::Value *V) {
   START_TIMER("PointsTo-Set Computation", PAMM_SEVERITY_LEVEL::Full);
   set<vertex_t> reachable_vertices;
   reachability_dfs_visitor vis(reachable_vertices);
+  if (!boost::num_vertices(ptg)) return {};
   vector<boost::default_color_type> color_map(boost::num_vertices(ptg));
   boost::depth_first_visit(
       ptg, value_vertex_map[V], vis,
