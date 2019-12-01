@@ -4,6 +4,8 @@
 #include <set>
 #include <unordered_set>
 #include <map>
+#include <iostream>
+#include <fstream>
 
 #include <llvm/IR/CallSite.h>
 #include <llvm/IR/LLVMContext.h>
@@ -13,6 +15,7 @@
 #include <llvm/Support/Debug.h>
 #include <llvm/ADT/SmallBitVector.h>
 #include <phasar/PhasarLLVM/IfdsIde/GObjAnalysis/FastBitVector.h>
+
 
 namespace psr {
 
@@ -119,6 +122,8 @@ public:
     initializeMaps();
     SuperTypeMap = computeSuperTypeMap();
     SubTypeMap = computeSubTypeMap();
+    std::ofstream tgFile("types.dot", std::ios::out);
+    printAsDot(tgFile);
   }
 
   void dumpTypeMap() const {
@@ -255,6 +260,13 @@ public:
     return it->second;
   }
 
+  void printAsDot(std::ostream &os) const {
+    os << "digraph G {\n";
+    for (auto &typePair : SuperClassMap) {
+      os << typePair.first << " -> " << typePair.second << "\n";
+    }
+    os << "}\n";
+  }
 };
 
 }
