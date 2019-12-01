@@ -59,14 +59,17 @@ protected:
     const std::vector<ExpectedErrorT> &groundTruth,
     const std::vector<GObjAnalysis::ErrorEntryT> &results) {
 
-    EXPECT_EQ(groundTruth.size(), results.size()) << "Different number of errors.";
-    if (groundTruth.size() != results.size())
-      return;
 
     // The results reported by the analysis do not arrive in deterministic order.
     // This is due how the ICFG iterates over functions. To fix this and avoid
-    // intermitent test failures, we sort them here.
-    std::vector<GObjAnalysis::ErrorEntryT> sortedResults(results);
+    // intermitent test failures, we sort them here. Filter out the GOOD_CAST entries,
+    // added for debugging.
+    std::vector<GObjAnalysis::ErrorEntryT> sortedResults;
+
+    std::copy_if(results.begin(), results.end(), std::back_inserter(sortedResults),
+                 [](const GObjAnalysis::ErrorEntryT &e) {
+                   return get<0>(e) != GObjAnalysis::Error::GOOD_CAST; });
+
     std::sort(sortedResults.begin(), sortedResults.end(),
               [](const GObjAnalysis::ErrorEntryT &e1, const GObjAnalysis::ErrorEntryT &e2) {
                 const llvm::Instruction *I1 = llvm::cast<llvm::Instruction>(get<1>(e1));
@@ -79,6 +82,11 @@ protected:
                   return line1 < line2;
                 return col1 < col2;
               });
+
+    EXPECT_EQ(groundTruth.size(), sortedResults.size()) << "Different number of errors.";
+    if (groundTruth.size() != sortedResults.size())
+      return;
+
 
     for (unsigned i = 0; i < groundTruth.size(); ++i) {
       auto &groundTruthEntry = groundTruth[i];

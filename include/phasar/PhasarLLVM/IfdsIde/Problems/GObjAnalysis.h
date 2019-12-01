@@ -160,7 +160,8 @@ public:
 
   enum class Error {
     NARROWING_CAST, // a cast from an object of type T to an object of type U, where U <: T
-    INCOMPATIBLE_CAST // a cast between two types T and U such that (not (U <: T or T <: U)) (i.e. unrelated types).
+    INCOMPATIBLE_CAST, // a cast between two types T and U such that (not (U <: T or T <: U)) (i.e. unrelated types).
+    GOOD_CAST // this is not an error, it's here just for reporting purposes
   };
 
   using ErrorEntryT = std::tuple<Error, const llvm::Value*, std::string, std::string>;
@@ -197,6 +198,13 @@ public:
             } else if (!TypeInfo.isWideningCast(fromType, toType)) {
               errors.push_back(make_tuple(
                                  Error::INCOMPATIBLE_CAST,
+                                 res.first,
+                                 fromType,
+                                 toType));
+            } else {
+              // this is the correct case, we track it too
+              errors.push_back(make_tuple(
+                                 Error::GOOD_CAST,
                                  res.first,
                                  fromType,
                                  toType));

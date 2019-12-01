@@ -535,6 +535,9 @@ void GObjAnalysis::printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t>
     case Error::NARROWING_CAST:
       os << "\tNarrowing cast ";
       break;
+    case Error::GOOD_CAST:
+      os << "\tValid cast ";
+      break;
     default:
       os << "\tUnknown error ";
       break;
