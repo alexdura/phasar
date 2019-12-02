@@ -60,20 +60,31 @@ GObjAnalysis::getNormalFlowFunction(GObjAnalysis::n_t curr,
   if (auto Store = llvm::dyn_cast<llvm::StoreInst>(curr)) {
     // TAFF probably stands for "Taint Analysis Flow Function"
     auto *Ptr = Store->getPointerOperand();
-    std::set<const llvm::Value*> AliasedPtrs = icfg.getWholeModulePTG().getPointsToSet(Ptr);
-    AliasedPtrs.insert(Ptr);
+    // If the value we store is GObject, then
+    // the pointer we stor is a pointer to GObject and so
+    // are all the pointers that alias it.
+#if 0
+    PointsToGraph &ptg = icfg.getWholeModulePTG();
+#else
+    const std::string &funcName = Store->getParent()->getParent()->getName().str();
+    PointsToGraph &ptg = *irdb.getPointsToGraph(funcName);
+#endif
 
+    std::set<const llvm::Value*> DefVars = ptg.getPointsToSet(Ptr);
+
+    DefVars.insert(Ptr);
+    DefVars.insert(Store->getValueOperand());
     struct StoreTF : FlowFunction<GObjAnalysis::d_t> {
       d_t Data, Ptr;
-      std::set<d_t> AliasSet;
+      std::set<d_t> DefSet;
       StoreTF(d_t Data, d_t Ptr, std::set<d_t> &&AliasSet) :
-        Data(Data), Ptr(Ptr), AliasSet(AliasSet) {}
+        Data(Data), Ptr(Ptr), DefSet(AliasSet) {}
       set<GObjAnalysis::d_t>
       computeTargets(d_t source) override {
         if (Data == source) {
           // if the Data is holding a GObj, then all locations
           // that alias the pointer operand may hold a GObj
-          return AliasSet;
+          return DefSet;
         } else if (Data != source &&
                    Ptr == source) {
           // If we are erasing the value, we cut
@@ -83,7 +94,7 @@ GObjAnalysis::getNormalFlowFunction(GObjAnalysis::n_t curr,
         }
       }
     };
-    return make_shared<StoreTF>(Store->getValueOperand(), Ptr, std::move(AliasedPtrs));
+    return make_shared<StoreTF>(Store->getValueOperand(), Ptr, std::move(DefVars));
   }
   // If a tainted value is loaded, the loaded value is of course tainted
   if (auto Load = llvm::dyn_cast<llvm::LoadInst>(curr)) {

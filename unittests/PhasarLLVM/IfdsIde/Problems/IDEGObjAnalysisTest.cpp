@@ -39,7 +39,9 @@ protected:
     IRDB->preprocessIR();
     TH = new LLVMTypeHierarchy(*IRDB);
     ICFG =
-        new LLVMBasedICFG(*TH, *IRDB, CallGraphAnalysisType::OTF, EntryPoints);
+        new LLVMBasedICFG(*TH, *IRDB, CallGraphAnalysisType::RTA, EntryPoints);
+    ICFG->printAsDot("cfg.dot");
+    ICFG->printInternalPTGAsDot("ptg.dot");
     Problem = new GObjAnalysis(*ICFG, *TH, *IRDB, EntryPoints);
   }
 
@@ -156,7 +158,7 @@ TEST_F(IDEGObjAnalysisTest, NarrowingTestBasic_01) {
   Initialize({pathToLLFiles + "invalid-narrowing-cast_c_m2r_dbg.ll",
         pathToLLFiles + "viewer-file_c_m2r_dbg.ll",
         pathToLLFiles + "viewer-pink_c_m2r_dbg.ll"});
-  SolverT llvmgobjsolver(*Problem, false, true);
+  SolverT llvmgobjsolver(*Problem, true, true);
   llvmgobjsolver.solve();
 
   auto results = Problem->collectErrors(llvmgobjsolver);
@@ -198,6 +200,23 @@ TEST_F(IDEGObjAnalysisTest, NarrowingTestStruct_02) {
   const std::vector<ExpectedErrorT> expectedErrors = {
     {GObjAnalysis::Error::NARROWING_CAST, 18, 38, "viewer_file", "viewer_pink"},
     {GObjAnalysis::Error::NARROWING_CAST, 20, 34, "viewer_file", "viewer_pink"}
+  };
+
+  compareResults(expectedErrors, results);
+}
+
+
+TEST_F(IDEGObjAnalysisTest, NarrowingTestStruct_03) {
+  Initialize({pathToLLFiles + "invalid-narrowing-cast-3_c_m2r_dbg.ll",
+        pathToLLFiles + "viewer-file_c_m2r_dbg.ll",
+        pathToLLFiles + "viewer-pink_c_m2r_dbg.ll"});
+  SolverT llvmgobjsolver(*Problem, true, true);
+  llvmgobjsolver.solve();
+
+  auto results = Problem->collectErrors(llvmgobjsolver);
+
+  const std::vector<ExpectedErrorT> expectedErrors = {
+    {GObjAnalysis::Error::NARROWING_CAST, 17, 31, "viewer_file", "viewer_pink"},
   };
 
   compareResults(expectedErrors, results);
