@@ -41,7 +41,12 @@ protected:
     ICFG =
         new LLVMBasedICFG(*TH, *IRDB, CallGraphAnalysisType::RTA, EntryPoints);
     ICFG->printAsDot("cfg.dot");
-    ICFG->printInternalPTGAsDot("ptg.dot");
+    for (auto F : ICFG->getAllMethods()) {
+      PointsToGraph *ptg = IRDB->getPointsToGraph(F->getName().str());
+      if (ptg) {
+        ptg->printAsDot(F->getName().str() + "_ptg.dot");
+      }
+    }
     Problem = new GObjAnalysis(*ICFG, *TH, *IRDB, EntryPoints);
   }
 

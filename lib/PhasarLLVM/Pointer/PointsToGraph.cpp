@@ -164,9 +164,13 @@ PointsToGraph::VertexProperties::VertexProperties(const llvm::Value *v)
   // WARNING: equivalent to llvmIRToString
   // WARNING 2 : really really really slow (yes it is)
   // // save the ir code
-  // llvm::raw_string_ostream rso(ir_code);
-  // value->print(rso);
-  // // retrieve the id
+#ifndef NDEBUG
+  llvm::raw_string_ostream rso(ir_code);
+  value->print(rso);
+  ir_code = rso.str();
+#endif
+
+  // retrieve the id
   // if (const llvm::Instruction *inst =
   //         llvm::dyn_cast<llvm::Instruction>(value)) {
   //   id = stoull(llvm::cast<llvm::MDString>(

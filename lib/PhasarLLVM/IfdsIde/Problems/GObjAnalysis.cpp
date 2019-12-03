@@ -70,7 +70,14 @@ GObjAnalysis::getNormalFlowFunction(GObjAnalysis::n_t curr,
     PointsToGraph &ptg = *irdb.getPointsToGraph(funcName);
 #endif
 
+#if 1
     std::set<const llvm::Value*> DefVars = ptg.getPointsToSet(Ptr);
+#else
+    // this is unsound, but using the points-to set generates too many
+    // variables
+    std::set<const llvm::Value*> DefVars;
+#endif
+
 
     DefVars.insert(Ptr);
     DefVars.insert(Store->getValueOperand());
@@ -84,6 +91,7 @@ GObjAnalysis::getNormalFlowFunction(GObjAnalysis::n_t curr,
         if (Data == source) {
           // if the Data is holding a GObj, then all locations
           // that alias the pointer operand may hold a GObj
+          std::cout << "Generated " << DefSet.size() << " variables \n";
           return DefSet;
         } else if (Data != source &&
                    Ptr == source) {
