@@ -546,8 +546,10 @@ void GObjAnalysis::printValue(ostream &os, v_t v) const {
 void GObjAnalysis::printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t> &SR) {
   os << "------- GObj type analysis results --------\n";
   for (auto &err : collectErrors(SR)) {
-    os << "ERROR at " << llvmValueToSrc(std::get<1>(err), false) << "\n";
-    switch (std::get<0>(err)) {
+    auto errorKind = std::get<0>(err);
+    os << (errorKind == Error::GOOD_CAST ? "INFO at " : "ERROR at ");
+    os << llvmValueToSrc(std::get<1>(err), false) << "\n";
+    switch (errorKind) {
     case Error::INCOMPATIBLE_CAST:
       os << "\tInvalid cast ";
       break;
@@ -564,6 +566,7 @@ void GObjAnalysis::printIDEReport(std::ostream &os, SolverResults<n_t, d_t, v_t>
     auto &fromType = get<2>(err);
     auto &toType = get<3>(err);
     os << "from '" << fromType << "' to '" << toType << "'\n";
+    os << "-------------------------------------------\n";
   }
 
   os << "---- End of GObj type analysis results-----\n";

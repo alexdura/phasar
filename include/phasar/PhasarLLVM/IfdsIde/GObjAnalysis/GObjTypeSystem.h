@@ -6,6 +6,7 @@
 #include <map>
 #include <iostream>
 #include <fstream>
+#include <boost/algorithm/string.hpp>
 
 #include <llvm/IR/CallSite.h>
 #include <llvm/IR/LLVMContext.h>
@@ -15,6 +16,7 @@
 #include <llvm/Support/Debug.h>
 #include <llvm/ADT/SmallBitVector.h>
 #include <phasar/PhasarLLVM/IfdsIde/GObjAnalysis/FastBitVector.h>
+
 
 
 namespace psr {
@@ -34,6 +36,7 @@ private:
 
   // A map mapping subclasses to their superclass.
   std::map<std::string, std::string> SuperClassMap;
+  std::map<std::string, std::string> AlternativeTypeNames;
   // we map type names to LLVM values
   // The Phasar framework also uses LLVM values
   // for its "type" values in the analysis
@@ -49,7 +52,7 @@ private:
   llvm::LLVMContext TypeValueContext;
   llvm::Module TypeValueModule;
 
-  std::map<std::string, std::set<std::string>> SubTypeMap, SuperTypeMap;
+  std::map<std::string, std::set<std::string>> SuperTypeMap;
 
   void addBuiltinTypes() {
     // Object is the supertype of all class types.
@@ -114,6 +117,14 @@ private:
     }
   }
 
+  void initializeAlternativeTypeNames() {
+    for (auto &tname : SuperClassMap) {
+      std::string shortname = tname.first;
+      boost::erase_all(shortname, "_");
+      AlternativeTypeNames[shortname] = tname.first;
+    }
+  }
+
 public:
   GObjTypeGraph(const std::set<llvm::Module*> &Modules) :
     Modules(Modules),
@@ -121,7 +132,7 @@ public:
     buildTypeGraph();
     initializeMaps();
     SuperTypeMap = computeSuperTypeMap();
-    SubTypeMap = computeSubTypeMap();
+    initializeAlternativeTypeNames();
     std::ofstream tgFile("types.dot", std::ios::out);
     printAsDot(tgFile);
   }
@@ -187,6 +198,23 @@ public:
     return it != TypeToBitVectorMap.end();
   }
 
+  llvm::Optional<std::string> getUnderlyingStructType(const llvm::Type *T) const {
+    if (!T->isPointerTy())
+      return llvm::None;
+    const auto *PointedType = T->getPointerElementType();
+    if (!PointedType->isStructTy())
+      return llvm::None;
+
+    llvm::StringRef name = PointedType->getStructName();
+    name.consume_front("struct._");
+
+    auto it = AlternativeTypeNames.find(name.lower());
+    if (it != AlternativeTypeNames.end())
+      return it->second;
+
+    return llvm::None;
+  }
+
   static llvm::StringRef extractTypeName(const llvm::Function *F) {
     llvm::StringRef name = F->getName();
     name.consume_back("_get_type");
@@ -214,26 +242,6 @@ public:
           auto it = SuperClassMap.find(Type);
           assert(it != SuperClassMap.end());
           std::pair(std::ignore, change) = result[TypeToTypeSetPair.first].insert(it->second);
-        }
-      }
-    }
-    return result;
-  }
-
-  std::map<std::string, std::set<std::string>> computeSubTypeMap() const {
-    std::map<std::string, std::set<std::string>> result;
-    bool change = true;
-    for (auto &SP : SuperClassMap) {
-      result[SP.second] = {SP.first};
-    }
-    while (change) {
-      change = false;
-      for (auto TypePair : SuperClassMap) {
-        auto SubTypes = result[TypePair.second];
-        auto it = SuperClassMap.find(TypePair.first);
-        assert(it != SuperClassMap.end());
-        for (auto Type : SubTypes) {
-          std::pair(std::ignore, change) = result[TypePair.first].insert(Type);
         }
       }
     }

@@ -172,6 +172,55 @@ public:
   std::vector<GObjAnalysis::ErrorEntryT> collectErrors(ResultT &SR) const {
     std::vector<ErrorEntryT> errors;
     for (auto F : icfg.getAllMethods()) {
+      for (auto &B : *F) {
+        for (auto &I : B) {
+          auto *BitCast = llvm::dyn_cast<llvm::BitCastInst>(&I);
+          if (!BitCast)
+            continue;
+          auto MaybeTypeName = TypeInfo.getUnderlyingStructType(BitCast->getType());
+          if (!MaybeTypeName)
+            continue;
+          std::string toType = *MaybeTypeName;
+
+          auto results = SR.resultsAt(BitCast, /*strip zeros*/ true);
+
+          if (results.empty())
+            continue;
+
+          for (auto res : results) {
+            if (res.first != BitCast->getOperand(0))
+              continue;
+            auto &typeVector = res.second;
+            std::stringstream message;
+            for (int i = typeVector.find_first(); i >= 0; i = typeVector.find_next(i)) {
+              std::string fromType = TypeInfo.getTypeFromTypeId(i);
+              if (TypeInfo.isNarrowingCast(fromType, toType)) {
+                errors.push_back(make_tuple(
+                                   Error::NARROWING_CAST,
+                                   res.first,
+                                   fromType,
+                                   toType));
+              } else if (!TypeInfo.isWideningCast(fromType, toType)) {
+                errors.push_back(make_tuple(
+                                   Error::INCOMPATIBLE_CAST,
+                                   res.first,
+                                   fromType,
+                                   toType));
+              } else {
+                // this is the correct case, we track it too
+                errors.push_back(make_tuple(
+                                   Error::GOOD_CAST,
+                                   res.first,
+                                   fromType,
+                                   toType));
+              }
+            }
+          }
+        }
+      }
+    }
+
+    for (auto F : icfg.getAllMethods()) {
       if (!TypeInfo.isTypeCastFunction(F))
         continue;
       std::string toType = F->getName().lower();

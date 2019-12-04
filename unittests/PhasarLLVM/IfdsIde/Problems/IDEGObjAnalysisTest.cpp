@@ -244,7 +244,7 @@ TEST_F(IDEGObjAnalysisTest, IncompatibleCast_01) {
   compareResults(expectedErrors, results);
 }
 
-TEST_F(IDEGObjAnalysisTest, DISABLED_InvalidBitcast_01) {
+TEST_F(IDEGObjAnalysisTest, InvalidBitcast_01) {
   // This test is disabled because it is expected to fail.
   // TODO: enable once we have a mapping from LLVM types to GObj types
   Initialize({pathToLLFiles + "invalid-bitcast-1_c_m2r_dbg.ll",
@@ -256,7 +256,7 @@ TEST_F(IDEGObjAnalysisTest, DISABLED_InvalidBitcast_01) {
   auto results = Problem->collectErrors(llvmgobjsolver);
 
   const std::vector<ExpectedErrorT> expectedErrors = {
-    {GObjAnalysis::Error::INCOMPATIBLE_CAST, 12, 38, "viewer_green", "viewer_pink"},
+    {GObjAnalysis::Error::NARROWING_CAST, 10, 20, "viewer_file", "viewer_pink"},
   };
 
   compareResults(expectedErrors, results);
